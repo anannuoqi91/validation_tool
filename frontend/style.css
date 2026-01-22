@@ -1,0 +1,1413 @@
+/* 基础样式重置 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: #f5f5f5;
+    color: #333;
+    line-height: 1.6;
+}
+
+/* 顶部导航栏 */
+.header {
+    background: #fff;
+    padding: 1rem 2rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #4285F4;
+}
+
+.header-btn {
+    background: #4285F4;
+    color: white;
+    border: none;
+    padding: 0.4rem 0.8rem;
+    /* 缩小内边距 */
+    border-radius: 4px;
+    cursor: pointer;
+    margin-left: 0.5rem;
+    font-size: 0.85rem;
+    /* 缩小字体大小 */
+}
+
+.header-btn:hover {
+    background: #3367D6;
+}
+
+/* 主内容区 */
+.main-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr 300px;
+    grid-template-rows: auto 1fr;
+    gap: 0.1rem;
+    padding: 0.1rem;
+    height: calc(100vh - 60px);
+    overflow: hidden;
+}
+
+/* 数据源设置长条 */
+.data-source-bar {
+    grid-column: 1 / span 3;
+    grid-row: 1;
+    background: white;
+    border-radius: 8px;
+    padding: 0.1rem 0.3rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 0;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+/* 左侧：视频和绘制工具 */
+.video-tools-section {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 0.05rem;
+    overflow: hidden;
+    min-height: 400px;
+    height: 100%;
+}
+
+/* 数据源头部容器 - 将收缩按钮放置在右上角 */
+.data-source-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.3rem 0;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid #e9ecef;
+    position: relative;
+    /* 添加相对定位 */
+}
+
+/* 视频显示区 */
+.video-section {
+    background: white;
+    border-radius: 8px;
+    padding: 0.1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 300px;
+    overflow: hidden;
+}
+
+/* 视频容器 */
+.video-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 200px;
+    background: #000;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.05rem;
+    transition: all 0.3s ease;
+    flex: 1;
+}
+
+/* 视频播放器 */
+#videoPlayer {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+}
+
+/* 画布 */
+#drawCanvas,
+#overlayCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+#drawCanvas {
+    pointer-events: auto;
+    cursor: crosshair;
+}
+
+/* 绘制工具区 */
+.drawing-tools-section {
+    background: white;
+    border-radius: 8px;
+    padding: 0.1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    max-height: 120px;
+    min-height: 100px;
+    overflow-y: auto;
+    flex-shrink: 0;
+}
+
+/* 删除第800-810行的重复规则 */
+.data-source-bar.collapsed {
+    padding: 0.3rem 0.8rem;
+    max-height: 50px;
+    /* 收缩状态的最大高度 */
+    overflow: hidden;
+}
+
+.data-source-bar.collapsed .data-source-content {
+    opacity: 0;
+    height: 0;
+    overflow: hidden;
+    margin-top: 0;
+    padding: 0;
+}
+
+/* 左侧：视频和绘制工具 */
+.video-tools-section {
+    grid-column: 1;
+    /* 第一列：视频 */
+    grid-row: 2;
+    /* 第二行 */
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    overflow-y: auto;
+}
+
+/* 中间：三维点云显示区 */
+.pointcloud-section {
+    grid-column: 2;
+    /* 第二列：点云 */
+    grid-row: 2;
+    /* 第二行 */
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+}
+
+/* 右侧：实时统计数据 */
+.stats-section {
+    grid-column: 3;
+    /* 第三列：统计数据 */
+    grid-row: 2;
+    /* 第二行 */
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    height: fit-content;
+    max-height: 100%;
+    /* 限制最大高度 */
+    overflow-y: auto;
+}
+
+.stats-container {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* 视频容器 */
+.video-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 300px;
+    /* max-height: 80vh; */
+    background: #000;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+    transition: all 0.3s ease;
+    flex: 1;
+    /* 添加flex属性以占据可用空间 */
+}
+
+/* 视频显示区 */
+.video-section {
+    background: white;
+    border-radius: 8px;
+    padding: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 300px;
+    /* max-height: 80vh; */
+    overflow: hidden;
+    /* 防止内容溢出 */
+}
+
+/* 视频显示区标题 */
+.video-section h3 {
+    margin: 0 0 0.5rem 0;
+    /* 减少下边距 */
+    font-size: 0.9rem;
+    /* 减小字体大小 */
+    color: #4285F4;
+}
+
+/* 视频控制按钮 */
+.video-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.3rem;
+    /* 减少上边距 */
+    padding: 0.2rem 0;
+    /* 添加内边距 */
+}
+
+/* 绘制工具区 */
+.drawing-tools-section {
+    background: white;
+    border-radius: 8px;
+    padding: 0.8rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* 控制面板（车道和触发线列表） */
+.control-panel {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.data-source-bar .panel-section {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.data-source-bar .form-row {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.data-source-bar .form-group {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.data-source-bar .primary-btn {
+    width: auto;
+    padding: 0.4rem 1rem;
+    margin-top: 0;
+}
+
+/* 左侧：视频和绘制工具 */
+.video-tools-section {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    overflow-y: auto;
+    min-height: 500px;
+    /* 确保有最小高度 */
+}
+
+/* 视频显示区 */
+.video-section {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    flex: 1;
+    /* 视频区域占据更多空间 */
+    display: flex;
+    flex-direction: column;
+}
+
+/* 统计数据显示区 */
+.stats-section {
+    background: white;
+    border-radius: 8px;
+    padding: 0.8rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    max-height: 150px;
+    /* 限制高度 */
+    overflow-y: auto;
+}
+
+/* 绘制工具区 */
+.drawing-tools-section {
+    background: white;
+    border-radius: 8px;
+    padding: 0.8rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    max-height: 200px;
+    /* 限制高度 */
+    overflow-y: auto;
+}
+
+/* 控制面板 */
+.control-panel {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    max-height: 300px;
+    /* 限制高度 */
+    overflow-y: auto;
+}
+
+/* 右侧：三维点云显示区 */
+.pointcloud-section {
+    grid-column: 2;
+    /* 第二列 */
+    grid-row: 2;
+    /* 第二行 */
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+}
+
+.pointcloud-container {
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+    background: #1a1a1a;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+    flex: 1;
+}
+
+.pointcloud-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: auto;
+}
+
+/* 点云控制按钮样式 */
+.pointcloud-controls button {
+    background: #4285F4;
+    color: white;
+    border: none;
+    padding: 0.4rem 0.8rem;
+    /* 缩小内边距 */
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    /* 缩小字体大小 */
+}
+
+.pointcloud-controls button:hover {
+    background: #3367D6;
+}
+
+/* 右侧面板 */
+.right-panel {
+    grid-column: 3;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* 统计数据显示区 */
+.stats-section {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    height: fit-content;
+}
+
+.stats-container {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* 控制面板 */
+.control-panel {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    overflow-y: auto;
+    flex: 1;
+    max-height: 400px;
+}
+
+.panel-section {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #eee;
+}
+
+.panel-section:last-child {
+    border-bottom: none;
+}
+
+/* 工具按钮 */
+.tool-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.tool-btn {
+    flex: 1;
+    padding: 0.4rem 0.6rem;
+    /* 进一步缩小内边距 */
+    border: 1px solid #ddd;
+    background: white;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    /* 进一步缩小字体大小 */
+    line-height: 1.2;
+    /* 减小行高 */
+    min-height: auto;
+    /* 移除最小高度限制 */
+}
+
+.tool-btn.active {
+    background: #4285F4;
+    color: white;
+    border-color: #4285F4;
+}
+
+.tool-btn.danger {
+    background: #f44336;
+    color: white;
+    border-color: #f44336;
+}
+
+.tool-btn:hover {
+    opacity: 0.8;
+}
+
+/* 表单样式 */
+.form-group {
+    margin-bottom: 0.75rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.text-input,
+.number-input,
+.file-input,
+.color-input,
+.range-input {
+    width: 100%;
+    padding: 0.4rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.range-input {
+    padding: 0;
+}
+
+.primary-btn {
+    background: #4285F4;
+    color: white;
+    border: none;
+    padding: 0.6rem 1.2rem;
+    /* 缩小内边距 */
+    border-radius: 4px;
+    cursor: pointer;
+    width: 100%;
+    font-size: 0.9rem;
+    /* 缩小字体大小 */
+    margin-top: 0.5rem;
+}
+
+.primary-btn:hover {
+    background: #3367D6;
+}
+
+.primary-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+/* 标签页 */
+.source-tabs {
+    display: flex;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #ddd;
+}
+
+.tab-btn {
+    padding: 0.4rem 0.8rem;
+    /* 缩小内边距 */
+    background: none;
+    border: none;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-size: 0.85rem;
+    /* 缩小字体大小 */
+}
+
+.tab-btn.active {
+    border-bottom-color: #4285F4;
+    color: #4285F4;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* 统计数据显示 */
+.stats-item {
+    padding: 0.5rem;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.stats-label {
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.stats-count {
+    background: #4285F4;
+    color: white;
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+}
+
+.stats-subcount {
+    font-size: 0.7rem;
+    color: #666;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+    .main-content {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto;
+    }
+
+    .video-tools-section,
+    .pointcloud-section,
+    .right-panel {
+        grid-column: 1;
+    }
+
+    .video-tools-section {
+        grid-row: 1;
+    }
+
+    .pointcloud-section {
+        grid-row: 2;
+    }
+
+    .right-panel {
+        grid-row: 3;
+    }
+
+    .video-tools-section {
+        flex-direction: column;
+    }
+}
+
+/* 视频容器 */
+.video-container {
+    position: relative;
+    width: 100%;
+    height: auto;
+    /* 高度由JavaScript根据视频比例设置 */
+    min-height: 300px;
+    background: #000;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+    transition: all 0.3s ease;
+}
+
+/* 视频播放器 */
+#videoPlayer {
+    width: 100%;
+    height: 100%;
+    /* 使用容器高度 */
+    object-fit: contain;
+    /* 保持视频比例 */
+    background: #000;
+}
+
+/* 画布 */
+#drawCanvas,
+#overlayCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+#drawCanvas {
+    pointer-events: auto;
+    cursor: crosshair;
+}
+
+/* 视频控制按钮 */
+.video-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+/* 全屏状态下的控制按钮 */
+.video-container.fullscreen .video-controls {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 10000;
+}
+
+.tool-btn:hover {
+    opacity: 0.8;
+}
+
+/* 表单样式 */
+.form-group {
+    margin-bottom: 0.75rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.text-input,
+.number-input,
+.file-input,
+.color-input,
+.range-input {
+    width: 100%;
+    padding: 0.4rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+/* 右侧：数据面板（包含统计数据、车道列表、触发线列表） */
+.data-panel {
+    grid-column: 3;
+    /* 第三列 */
+    grid-row: 2;
+    /* 第二行 */
+    background: white;
+    border-radius: 8px;
+    padding: 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+}
+
+/* 面板标签页 */
+.panel-tabs {
+    display: flex;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+    padding: 0.5rem;
+}
+
+.panel-tab-btn {
+    flex: 1;
+    background: none;
+    border: none;
+    padding: 0.5rem 0.8rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: #6c757d;
+    border-radius: 4px;
+    margin: 0 0.2rem;
+    transition: all 0.3s ease;
+}
+
+.panel-tab-btn:hover {
+    background: #e9ecef;
+    color: #495057;
+}
+
+.panel-tab-btn.active {
+    background: #4285F4;
+    color: white;
+}
+
+/* 面板内容 */
+.panel-content {
+    flex: 1;
+    padding: 1rem;
+    overflow-y: auto;
+    display: none;
+}
+
+.panel-content.active {
+    display: block;
+}
+
+.panel-content h3 {
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    color: #4285F4;
+    border-bottom: 1px solid #e9ecef;
+    padding-bottom: 0.5rem;
+}
+
+/* 统计数据容器 */
+.stats-container {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.stats-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem;
+    border-bottom: 1px solid #f1f3f4;
+}
+
+.stats-label {
+    font-weight: 500;
+    color: #5f6368;
+}
+
+.stats-count {
+    font-weight: bold;
+    color: #4285F4;
+}
+
+.stats-subcount {
+    font-size: 0.8rem;
+    color: #80868b;
+}
+
+/* 项目列表 */
+.items-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.items-list .item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem;
+    border-bottom: 1px solid #f1f3f4;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.items-list .item:hover {
+    background-color: #f8f9fa;
+}
+
+.items-list .item.active {
+    background-color: #e3f2fd;
+    border-left: 3px solid #4285F4;
+}
+
+.items-list .item-name {
+    font-weight: 500;
+    color: #5f6368;
+}
+
+.items-list .item-actions {
+    display: flex;
+    gap: 0.3rem;
+}
+
+.items-list .item-action {
+    background: none;
+    border: none;
+    color: #80868b;
+    cursor: pointer;
+    padding: 0.2rem;
+    border-radius: 3px;
+    font-size: 0.8rem;
+}
+
+.items-list .item-action:hover {
+    background: #f1f3f4;
+    color: #4285F4;
+}
+
+/* 通知样式 */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 4px;
+    color: white;
+    font-size: 0.9rem;
+    z-index: 1000;
+    max-width: 300px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    animation: slideIn 0.3s ease-out;
+}
+
+.notification-success {
+    background-color: #4CAF50;
+}
+
+.notification-error {
+    background-color: #f44336;
+}
+
+.notification-warning {
+    background-color: #ff9800;
+}
+
+.notification-info {
+    background-color: #2196F3;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* 连接状态指示器 */
+.status-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-connected {
+    background-color: #4CAF50;
+    animation: pulse 2s infinite;
+}
+
+.status-disconnected {
+    background-color: #f44336;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+    }
+}
+
+/* 视频容器优化 */
+.video-container {
+    position: relative;
+    width: 100%;
+    background-color: #000;
+    overflow: hidden;
+}
+
+.video-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+/* 加载状态指示 */
+.video-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 1.1rem;
+}
+
+/* 响应式优化 */
+@media (max-width: 1200px) {
+    .notification {
+        max-width: 250px;
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .notification {
+        top: 10px;
+        right: 10px;
+        max-width: 200px;
+        padding: 8px 12px;
+    }
+}
+
+// ... existing code ...
+.items-list .item-action.delete:hover {
+    color: #ea4335;
+}
+
+.tool-btn:hover {
+    opacity: 0.8;
+}
+
+/* 表单样式 */
+.form-group {
+    margin-bottom: 0.75rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.text-input,
+.number-input,
+.file-input,
+.color-input,
+.range-input {
+    width: 100%;
+    padding: 0.4rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.range-input {
+    padding: 0;
+}
+
+.primary-btn {
+    background: #4285F4;
+    color: white;
+    border: none;
+    padding: 0.6rem 1.2rem;
+    /* 缩小内边距 */
+    border-radius: 4px;
+    cursor: pointer;
+    width: 100%;
+    font-size: 0.9rem;
+    /* 缩小字体大小 */
+    margin-top: 0.5rem;
+}
+
+.primary-btn:hover {
+    background: #3367D6;
+}
+
+.primary-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+/* 标签页 */
+.source-tabs {
+    display: flex;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #ddd;
+}
+
+.tab-btn {
+    padding: 0.4rem 0.8rem;
+    /* 缩小内边距 */
+    background: none;
+    border: none;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-size: 0.85rem;
+    /* 缩小字体大小 */
+}
+
+.tab-btn.active {
+    border-bottom-color: #4285F4;
+    color: #4285F4;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* 统计数据显示 */
+.stats-item {
+    padding: 0.5rem;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.stats-label {
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.stats-count {
+    background: #4285F4;
+    color: white;
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+}
+
+/* 全屏状态下的视频容器 */
+.video-container.fullscreen {
+    width: 100vw !important;
+    height: 100vh !important;
+    border-radius: 0;
+    margin-bottom: 0;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 9999;
+    background: #000;
+}
+
+/* 全屏状态下的视频播放器 */
+.video-container.fullscreen #videoPlayer {
+    width: 100vw;
+    height: 100vh;
+    object-fit: contain;
+    /* 保持视频比例 */
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* 统计数据显示 */
+.stats-item {
+    padding: 0.5rem;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.stats-label {
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.stats-count {
+    background: #4285F4;
+    color: white;
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+}
+}
+
+.stats-subcount {
+    font-size: 0.7rem;
+    color: #666;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+    .main-content {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto;
+    }
+
+    .video-tools-section,
+    .pointcloud-section,
+    .right-panel {
+        grid-column: 1;
+    }
+
+    .video-tools-section {
+        grid-row: 1;
+    }
+
+    .pointcloud-section {
+        grid-row: 2;
+    }
+
+    .right-panel {
+        grid-row: 3;
+    }
+
+    .video-tools-section {
+        flex-direction: column;
+    }
+}
+
+/* 绘制工具区的属性设置样式 */
+.properties-section {
+    margin-top: 0.8rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid #e9ecef;
+}
+
+.properties-section h4 {
+    margin: 0 0 0.8rem 0;
+    font-size: 0.9rem;
+    color: #4285F4;
+    font-weight: 600;
+}
+
+.properties-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+/* 绘制工具区的表单行样式 - 确保车道号和车道名称在同一行 */
+.drawing-tools-section .form-row {
+    display: flex;
+    gap: 0.8rem;
+    margin-bottom: 0;
+    align-items: flex-end;
+}
+
+.drawing-tools-section .form-group {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.drawing-tools-section .form-group label {
+    display: block;
+    margin-bottom: 0.3rem;
+    font-weight: 500;
+    font-size: 0.8rem;
+    color: #5f6368;
+}
+
+.drawing-tools-section .text-input,
+.drawing-tools-section .number-input,
+.drawing-tools-section .color-input,
+.drawing-tools-section .range-input {
+    width: 100%;
+    padding: 0.4rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.8rem;
+}
+
+/* 优化车道号和车道名称的输入框宽度 */
+.drawing-tools-section .form-group:first-child {
+    flex: 0.4;
+}
+
+.drawing-tools-section .form-group:nth-child(2) {
+    flex: 0.6;
+}
+
+/* 确保颜色和宽度输入框也在同一行 */
+.drawing-tools-section .form-row:nth-child(2) .form-group:first-child {
+    flex: 0.5;
+}
+
+.drawing-tools-section .form-row:nth-child(2) .form-group:nth-child(2) {
+    flex: 0.5;
+}
+
+.range-input {
+    padding: 0;
+}
+
+.primary-btn {
+    background: #4285F4;
+    color: white;
+    border: none;
+    padding: 0.6rem 1.2rem;
+    /* 缩小内边距 */
+    border-radius: 4px;
+    cursor: pointer;
+    width: 100%;
+    font-size: 0.9rem;
+    /* 缩小字体大小 */
+    margin-top: 0.5rem;
+}
+
+.primary-btn:hover {
+    background: #3367D6;
+}
+
+.primary-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+/* 标签页 */
+.source-tabs {
+    display: flex;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #ddd;
+}
+
+.tab-btn {
+    padding: 0.4rem 0.8rem;
+    /* 缩小内边距 */
+    background: none;
+    border: none;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-size: 0.85rem;
+    /* 缩小字体大小 */
+}
+
+.tab-btn.active {
+    border-bottom-color: #4285F4;
+    color: #4285F4;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* 统计数据显示 */
+.stats-item {
+    padding: 0.5rem;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.stats-label {
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.stats-count {
+    background: #4285F4;
+    color: white;
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+}
+
+/* 全屏状态下的视频容器 */
+.video-container.fullscreen {
+    width: 100vw !important;
+    height: 100vh !important;
+    border-radius: 0;
+    margin-bottom: 0;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 9999;
+    background: #000;
+}
+
+/* 全屏状态下的视频播放器 */
+.video-container.fullscreen #videoPlayer {
+    width: 100vw;
+    height: 100vh;
+    object-fit: contain;
+    /* 保持视频比例 */
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* 统计数据显示 */
+.stats-item {
+    padding: 0.5rem;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.stats-label {
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.stats-count {
+    background: #4285F4;
+    color: white;
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+}
+}
+
+.stats-subcount {
+    font-size: 0.7rem;
+    color: #666;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+    .main-content {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto;
+    }
+
+    .video-tools-section,
+    .pointcloud-section,
+    .right-panel {
+        grid-column: 1;
+    }
+
+    .video-tools-section {
+        grid-row: 1;
+    }
+
+    .pointcloud-section {
+        grid-row: 2;
+    }
+
+    .right-panel {
+        grid-row: 3;
+    }
+
+    .video-tools-section {
+        flex-direction: column;
+    }
+}

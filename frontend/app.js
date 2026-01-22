@@ -1,0 +1,1919 @@
+// 主应用逻辑
+let currentTool = 'lane';
+let activeTab = 'online';
+let isConnected = false;
+let videoStream = null;
+
+// 绘图相关变量
+let isDrawing = false;
+let videoNaturalWidth = 0;
+let videoNaturalHeight = 0;
+let lanes = [];
+let triggers = [];
+let selectedItem = null;
+let currentLane = null;
+let currentTrigger = null;
+
+let dragStart = null;
+let dragTarget = null;
+
+// 视频相关变量
+let videoPlayer = document.getElementById('videoPlayer');
+let drawCanvas = document.getElementById('drawCanvas');
+let overlayCanvas = document.getElementById('overlayCanvas');
+let ctx = drawCanvas.getContext('2d');
+let overlayCtx = overlayCanvas.getContext('2d');
+
+// API基础URL
+const API_BASE_URL = 'http://localhost:5000/api';
+// 后端根地址（用于 /video_feed 等非 /api 路由）
+const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, ''); 
+
+// 定期更新统计数据
+let statsUpdateInterval = null;
+
+// 初始化
+window.addEventListener('load', () => {
+  initializeCanvas();
+
+  try {
+    initializeEventListeners(); // 即使这里有问题，也不影响定时器启动
+  } catch (e) {
+    console.error('[initializeEventListeners] crashed:', e);
+  }
+
+  updateUI();
+
+  // 开始定期更新统计数据
+  startStatsUpdate();
+});
+
+
+// 初始化画布
+function initializeCanvas() {
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    videoPlayer.addEventListener('load', () => {
+        // 当图片加载完成时更新实际尺寸
+        if (videoPlayer.naturalWidth > 0 && videoPlayer.naturalHeight > 0) {
+            videoNaturalWidth = videoPlayer.naturalWidth;
+            videoNaturalHeight = videoPlayer.naturalHeight;
+            resizeCanvas();
+        }
+    });
+    videoPlayer.addEventListener('loadedmetadata', resizeCanvas);
+}
+
+// 调整画布大小
+function resizeCanvas() {
+    drawCanvas.width = videoPlayer.offsetWidth;
+    drawCanvas.height = videoPlayer.offsetHeight;
+    overlayCanvas.width = videoPlayer.offsetWidth;
+    overlayCanvas.height = videoPlayer.offsetHeight;
+    
+    // 更新视频实际尺寸
+    if (videoPlayer.naturalWidth > 0 && videoPlayer.naturalHeight > 0) {
+        videoNaturalWidth = videoPlayer.naturalWidth;
+        videoNaturalHeight = videoPlayer.naturalHeight;
+    }
+    
+    redrawAll();
+}
+
+
+// 初始化事件监听器
+function initializeEventListeners() {
+    // 视频控制
+    document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
+    
+    // 数据源设置
+    document.getElementById('onlineTab').addEventListener('click', () => switchTab('online'));
+    document.getElementById('recordTab').addEventListener('click', () => switchTab('record'));
+    document.querySelector('#onlineTab .primary-btn')?.addEventListener('click', connect);
+    document.querySelector('#recordTab .primary-btn')?.addEventListener('click', loadRecord);
+
+    
+    // 绘制工具
+    document.getElementById('laneBtn').addEventListener('click', () => setTool('lane'));
+    document.getElementById('triggerBtn').addEventListener('click', () => setTool('trigger'));
+    document.getElementById('clearBtn').addEventListener('click', clearAll);
+    
+    // 画布事件
+    drawCanvas.addEventListener('mousedown', startDrawing);
+    drawCanvas.addEventListener('mousemove', draw);
+    drawCanvas.addEventListener('mouseup', stopDrawing);
+    drawCanvas.addEventListener('mouseleave', stopDrawing);
+    drawCanvas.addEventListener('dblclick', completeDrawing);
+    
+    // 数据管理
+    document.getElementById('saveBtn').addEventListener('click', saveConfig);
+    document.getElementById('loadBtn').addEventListener('click', loadConfig);
+    document.getElementById('exportBtn').addEventListener('click', exportData);
+    
+    // 属性设置
+    document.getElementById('laneNumber').addEventListener('input', updateLaneProperties);
+    document.getElementById('laneName').addEventListener('input', updateLaneProperties);
+    document.getElementById('laneColor').addEventListener('input', updateLaneProperties);
+    document.getElementById('laneWidth').addEventListener('input', updateLaneProperties);
+    document.getElementById('triggerName').addEventListener('input', updateTriggerProperties);
+    document.getElementById('triggerColor').addEventListener('input', updateTriggerProperties);
+    document.getElementById('triggerWidth').addEventListener('input', updateTriggerProperties);
+    
+    // 删除按钮事件已移至列表项中
+}
+
+
+// 工具函数
+function switchTab(tab) {
+    activeTab = tab;
+    
+    // 更新标签按钮状态
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelector(`.tab-btn:nth-child(${tab === 'online' ? 1 : 2})`).classList.add('active');
+    
+    // 更新标签内容
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+    });
+    document.getElementById(tab + 'Tab').classList.add('active');
+}
+
+function setTool(tool) {
+    currentTool = tool;
+    
+    // 更新工具按钮状态
+    document.querySelectorAll('.tool-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelector(`.tool-btn:nth-child(${tool === 'lane' ? 1 : 2})`).classList.add('active');
+}
+
+
+// 右侧数据面板（实时统计/车道/触发线）tab 切换
+function switchPanelTab(tabName) {
+    const panels = {
+        stats: document.getElementById('statsPanel'),
+        lanes: document.getElementById('lanesPanel'),
+        triggers: document.getElementById('triggersPanel'),
+    };
+
+    // 切换内容区
+    document.querySelectorAll('.panel-content').forEach(p => p.classList.remove('active'));
+    const activePanel = panels[tabName] || panels.stats;
+    if (activePanel) activePanel.classList.add('active');
+
+    // 切换按钮高亮
+    const labelMap = {
+        stats: '实时统计数据',
+        lanes: '车道列表',
+        triggers: '触发线列表',
+    };
+    const activeLabel = labelMap[tabName] || labelMap.stats;
+
+    document.querySelectorAll('.panel-tab-btn').forEach(btn => {
+        const isActive = (btn.textContent || '').trim() === activeLabel;
+        btn.classList.toggle('active', isActive);
+    });
+}
+
+// 更新车道属性
+function updateLaneProperties() {
+    if (!selectedItem || selectedItem.type !== 'lane') return;
+    
+    selectedItem.number = parseInt(document.getElementById('laneNumber').value);
+    selectedItem.name = document.getElementById('laneName').value || `车道${selectedItem.number}`;
+    selectedItem.color = document.getElementById('laneColor').value;
+    selectedItem.width = parseInt(document.getElementById('laneWidth').value);
+    
+    redrawAll();
+    updateUI();
+}
+
+
+// 更新触发线属性
+function updateTriggerProperties() {
+    if (!selectedItem || selectedItem.type !== 'trigger') return;
+    
+    selectedItem.name = document.getElementById('triggerName').value;
+    selectedItem.color = document.getElementById('triggerColor').value;
+    selectedItem.width = parseInt(document.getElementById('triggerWidth').value);
+    
+    redrawAll();
+    updateUI();
+}
+
+
+// 绘制控制点
+function drawControlPoint(point, color) {
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+}
+
+// 获取线段中点
+function getMidPoint(p1, p2) {
+    return {
+        x: (p1.x + p2.x) / 2,
+        y: (p1.y + p2.y) / 2
+    };
+}
+
+
+// 绘制车道
+function drawLane(lane) {
+    // 即使只有一个点也显示
+    if (lane.points.length >= 1) {
+        // 如果车道被选中，使用红色绘制
+        const color = (selectedItem === lane) ? '#ff0000' : lane.color;
+        
+        // 绘制线条
+        if (lane.points.length >= 2) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lane.width;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            
+            lane.points.forEach((point, index) => {
+                // 将实际坐标转换为显示坐标
+                const displayPoint = actualToDisplay(point.x, point.y);
+                if (index === 0) {
+                    ctx.moveTo(displayPoint.x, displayPoint.y);
+                } else {
+                    ctx.lineTo(displayPoint.x, displayPoint.y);
+                }
+            });
+            
+            // 如果是已完成的车道（currentLane为null或不是当前车道），且有3个以上的点，则闭合多边形
+            if ((!currentLane || currentLane.id !== lane.id) && lane.points.length >= 3) {
+                ctx.closePath();
+            }
+            
+            ctx.stroke();
+        }
+        
+        // 绘制车道号
+        if (lane.points.length >= 2) {
+            const p1Display = actualToDisplay(lane.points[0].x, lane.points[0].y);
+            const p2Display = actualToDisplay(lane.points[lane.points.length - 1].x, lane.points[lane.points.length - 1].y);
+            const midPoint = getMidPoint(p1Display, p2Display);
+            overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            overlayCtx.fillRect(midPoint.x - 20, midPoint.y - 15, 40, 30);
+            overlayCtx.fillStyle = '#ffffff';
+            overlayCtx.font = 'bold 14px Arial';
+            overlayCtx.textAlign = 'center';
+            overlayCtx.textBaseline = 'middle';
+            overlayCtx.fillText(lane.number.toString(), midPoint.x, midPoint.y);
+        }
+        
+        // 绘制控制点，选中项使用红色控制点
+        lane.points.forEach(point => {
+            const displayPoint = actualToDisplay(point.x, point.y);
+            drawControlPoint(displayPoint, color);
+        });
+    }
+}
+
+// 绘制触发线
+function drawTrigger(trigger) {
+    // 即使只有一个点也显示
+    if (trigger.points.length >= 1) {
+        // 如果触发线被选中，使用红色绘制
+        const color = (selectedItem === trigger) ? '#ff0000' : trigger.color;
+        
+        // 绘制线条
+        if (trigger.points.length >= 2) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = trigger.width;
+            ctx.setLineDash([10, 5]); // 虚线样式
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            
+            trigger.points.forEach((point, index) => {
+                // 将实际坐标转换为显示坐标
+                const displayPoint = actualToDisplay(point.x, point.y);
+                if (index === 0) {
+                    ctx.moveTo(displayPoint.x, displayPoint.y);
+                } else {
+                    ctx.lineTo(displayPoint.x, displayPoint.y);
+                }
+            });
+            
+            ctx.stroke();
+            ctx.setLineDash([]); // 重置为实线
+        }
+        
+        // 绘制触发线名称
+        if (trigger.points.length >= 2) {
+            const p1Display = actualToDisplay(trigger.points[0].x, trigger.points[0].y);
+            const p2Display = actualToDisplay(trigger.points[trigger.points.length - 1].x, trigger.points[trigger.points.length - 1].y);
+            const midPoint = getMidPoint(p1Display, p2Display);
+            overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            const textWidth = overlayCtx.measureText(trigger.name).width;
+            overlayCtx.fillRect(midPoint.x - textWidth/2 - 5, midPoint.y - 15, textWidth + 10, 30);
+            overlayCtx.fillStyle = '#ffffff';
+            overlayCtx.font = 'bold 14px Arial';
+            overlayCtx.textAlign = 'center';
+            overlayCtx.textBaseline = 'middle';
+            overlayCtx.fillText(trigger.name, midPoint.x, midPoint.y);
+        }
+        
+        // 绘制控制点，选中项使用红色控制点
+        trigger.points.forEach(point => {
+            const displayPoint = actualToDisplay(point.x, point.y);
+            drawControlPoint(displayPoint, color);
+        });
+    }
+}
+
+// 绘制触发线
+function drawTrigger(trigger) {
+    // 即使只有一个点也显示
+    if (trigger.points.length >= 1) {
+        // 如果触发线被选中，使用红色绘制
+        const color = (selectedItem === trigger) ? '#ff0000' : trigger.color;
+        
+        // 绘制线条
+        if (trigger.points.length >= 2) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = trigger.width;
+            ctx.setLineDash([10, 5]); // 虚线样式
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            
+            trigger.points.forEach((point, index) => {
+                // 将实际坐标转换为显示坐标
+                const displayPoint = actualToDisplay(point.x, point.y);
+                if (index === 0) {
+                    ctx.moveTo(displayPoint.x, displayPoint.y);
+                } else {
+                    ctx.lineTo(displayPoint.x, displayPoint.y);
+                }
+            });
+            
+            ctx.stroke();
+            ctx.setLineDash([]); // 重置为实线
+        }
+        
+        // 绘制触发线名称
+        if (trigger.points.length >= 2) {
+            const p1Display = actualToDisplay(trigger.points[0].x, trigger.points[0].y);
+            const p2Display = actualToDisplay(trigger.points[trigger.points.length - 1].x, trigger.points[trigger.points.length - 1].y);
+            const midPoint = getMidPoint(p1Display, p2Display);
+            overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            const textWidth = overlayCtx.measureText(trigger.name).width;
+            overlayCtx.fillRect(midPoint.x - textWidth/2 - 5, midPoint.y - 15, textWidth + 10, 30);
+            overlayCtx.fillStyle = '#ffffff';
+            overlayCtx.font = 'bold 14px Arial';
+            overlayCtx.textAlign = 'center';
+            overlayCtx.textBaseline = 'middle';
+            overlayCtx.fillText(trigger.name, midPoint.x, midPoint.y);
+        }
+        
+        // 绘制控制点，选中项使用红色控制点
+        trigger.points.forEach(point => {
+            const displayPoint = actualToDisplay(point.x, point.y);
+            drawControlPoint(displayPoint, color);
+        });
+    }
+}
+
+// 绘制选中状态
+function drawSelection(item) {
+    if (item.points.length < 2) return;
+    
+    ctx.strokeStyle = '#ff0000';
+    ctx.lineWidth = item.width + 4;
+    ctx.setLineDash([5, 5]);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    
+    item.points.forEach((point, index) => {
+        // 将实际坐标转换为显示坐标
+        const displayPoint = actualToDisplay(point.x, point.y);
+        if (index === 0) {
+            ctx.moveTo(displayPoint.x, displayPoint.y);
+        } else {
+            ctx.lineTo(displayPoint.x, displayPoint.y);
+        }
+    });
+    
+    ctx.stroke();
+    ctx.setLineDash([]);
+}
+
+
+
+// 重绘所有内容
+function redrawAll() {
+    // 清空画布
+    ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    
+    // 绘制所有车道
+    lanes.forEach(lane => drawLane(lane));
+    
+    // 绘制所有触发线
+    triggers.forEach(trigger => drawTrigger(trigger));
+    
+    // 绘制选中状态
+    if (selectedItem) {
+        drawSelection(selectedItem);
+    }
+}
+
+// 更新车道列表
+function updateLanesList() {
+    const lanesList = document.getElementById('lanesList');
+    lanesList.innerHTML = '';
+    
+    lanes.forEach(lane => {
+        const laneCard = document.createElement('div');
+        laneCard.className = 'item-card' + (selectedItem === lane ? ' selected' : '');
+        laneCard.innerHTML = `
+            <div class="item-info">
+                <div class="item-title">${lane.name || `车道 ${lane.number}`}</div>
+                <div class="item-details">编号: ${lane.number} · ${lane.points.length} 个点</div>
+            </div>
+            <button class="delete-btn" title="删除车道">🗑️</button>
+        `;
+        
+        // 点击卡片选择车道
+        laneCard.addEventListener('click', (e) => {
+            // 点击删除按钮不触发选择
+            if (e && e.target && e.target.closest && e.target.closest('.delete-btn')) return;
+
+            selectedItem = lane;
+            // 更新属性面板显示
+            document.getElementById('laneProperties').style.display = 'block';
+            document.getElementById('triggerProperties').style.display = 'none';
+            updateUI();
+            redrawAll();
+        });
+        
+        // 点击删除按钮删除车道
+        laneCard.querySelector('.delete-btn').addEventListener('click', (e) => {
+            e.stopPropagation(); // 防止触发卡片点击事件
+            deleteLane(lane.id);
+        });
+        
+        lanesList.appendChild(laneCard);
+    });
+}
+
+// 更新触发线列表
+function updateTriggersList() {
+    const triggersList = document.getElementById('triggersList');
+    triggersList.innerHTML = '';
+    
+    triggers.forEach(trigger => {
+        const triggerCard = document.createElement('div');
+        triggerCard.className = 'item-card' + (selectedItem === trigger ? ' selected' : '');
+        triggerCard.innerHTML = `
+            <div class="item-info">
+                <div class="item-title">${trigger.name}</div>
+                <div class="item-details">${trigger.points.length} 个点</div>
+            </div>
+            <button class="delete-btn" title="删除触发线">🗑️</button>
+        `;
+        
+        // 点击卡片选择触发线
+        triggerCard.addEventListener('click', (e) => {
+            // 点击删除按钮不触发选择
+            if (e && e.target && e.target.closest && e.target.closest('.delete-btn')) return;
+
+            selectedItem = trigger;
+            // 更新属性面板显示
+            document.getElementById('laneProperties').style.display = 'none';
+            document.getElementById('triggerProperties').style.display = 'block';
+            updateUI();
+            redrawAll();
+        });
+        
+        // 点击删除按钮删除触发线
+        triggerCard.querySelector('.delete-btn').addEventListener('click', (e) => {
+            e.stopPropagation(); // 防止触发卡片点击事件
+            deleteTrigger(trigger.id);
+        });
+        
+        triggersList.appendChild(triggerCard);
+    });
+}
+
+// 更新属性面板
+function updatePropertiesPanel() {
+    const laneProperties = document.getElementById('laneProperties');
+    const triggerProperties = document.getElementById('triggerProperties');
+    
+    // 添加null检查
+    if (!laneProperties || !triggerProperties) {
+        console.warn('属性面板DOM元素未找到');
+        return;
+    }
+    if (!selectedItem) {
+        // 不重置为默认值，保持当前属性面板的值
+        
+        // 显示当前工具对应的属性面板
+        document.getElementById('laneProperties').style.display = currentTool === 'lane' ? 'block' : 'none';
+        document.getElementById('triggerProperties').style.display = currentTool === 'trigger' ? 'block' : 'none';
+        return;
+    }
+    
+    if (selectedItem.type === 'lane') {
+        // 显示车道属性面板
+        document.getElementById('laneProperties').style.display = 'block';
+        document.getElementById('triggerProperties').style.display = 'none';
+        
+        // 更新属性值
+        document.getElementById('laneNumber').value = selectedItem.number;
+        document.getElementById('laneName').value = selectedItem.name || `车道${selectedItem.number}`;
+        document.getElementById('laneColor').value = selectedItem.color;
+        document.getElementById('laneWidth').value = selectedItem.width;
+    } else if (selectedItem.type === 'trigger') {
+        // 显示触发线属性面板
+        document.getElementById('laneProperties').style.display = 'none';
+        document.getElementById('triggerProperties').style.display = 'block';
+        
+        // 更新属性值
+        document.getElementById('triggerName').value = selectedItem.name;
+        document.getElementById('triggerColor').value = selectedItem.color;
+        document.getElementById('triggerWidth').value = selectedItem.width;
+    }
+}
+
+// 更新UI
+function updateUI() {
+    // 更新车道列表
+    updateLanesList();
+    
+    // 更新触发线列表
+    updateTriggersList();
+    
+    // 更新属性面板
+    updatePropertiesPanel();
+}
+
+// 显示通知消息
+function showNotification(message, type = 'info') {
+    // 移除之前的通知
+    const existingNotification = document.querySelector('.notification');
+    if (existingNotification) {
+        existingNotification.remove();
+    }
+    
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    
+    // 添加样式
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        border-radius: 4px;
+        color: white;
+        font-size: 0.9rem;
+        z-index: 1000;
+        max-width: 300px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        animation: slideIn 0.3s ease-out;
+    `;
+    
+    // 根据类型设置背景色
+    const colors = {
+        success: '#4CAF50',
+        error: '#f44336',
+        warning: '#ff9800',
+        info: '#2196F3'
+    };
+    notification.style.backgroundColor = colors[type] || colors.info;
+    
+    document.body.appendChild(notification);
+    
+    // 3秒后自动移除
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 3000);
+}
+
+
+// 开始定期更新统计数据
+function startStatsUpdate() {
+    // 清除之前的定时器
+    if (window.statsUpdateInterval) {
+        clearInterval(window.statsUpdateInterval);
+    }
+    
+    // 每2秒更新一次统计数据
+    window.statsUpdateInterval = setInterval(updateStats, 2000);
+}
+
+
+// 连接RTSP流
+async function connect() {
+    const rtspUrl = document.getElementById('rtspUrl').value;
+    const cyberEventChannel = document.getElementById('cyberEventChannel').value;
+    const cyberPointcloudChannel = document.getElementById('cyberPointcloudChannel').value;
+    
+    if (!rtspUrl) {
+        showNotification('请输入RTSP URL', 'error');
+        return;
+    }
+
+    const connectBtn = document.querySelector('#onlineTab .primary-btn');
+    connectBtn.disabled = true;
+    connectBtn.textContent = '连接中...';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/rtsp/connect`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                rtsp_url: rtspUrl,
+                cyber_event_channel: cyberEventChannel,
+                cyber_pointcloud_channel: cyberPointcloudChannel
+            })
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+            isConnected = true;
+            startVideoStream();
+
+            try {
+                updateConnectionStatus(true, 'RTSP 已建立');
+            } catch (uiErr) {
+                console.error('连接成功，但 UI 更新失败:', uiErr);
+                showNotification('连接成功，但界面更新失败（不影响连接）', 'warning');
+            }
+
+            showNotification('连接成功！', 'success');
+        } else {
+            try {
+                updateConnectionStatus(false, '连接失败');
+            } catch (_) {}
+            throw new Error(data.message || '连接失败');
+        }
+
+    } catch (error) {
+        console.error('连接错误:', error);
+        updateConnectionStatus(false, '连接失败');
+        alert('连接失败: ' + error.message);
+    } finally {
+        connectBtn.disabled = false;
+        connectBtn.textContent = '连接';
+    }
+}
+
+// 加载Record文件
+async function loadRecord() {
+    const fileInput = document.getElementById('recordFile');
+    if (fileInput.files.length === 0) {
+        alert('请选择记录文件');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('record_file', fileInput.files[0]);
+
+    const loadBtn = document.querySelector('#recordTab .primary-btn');
+    loadBtn.disabled = true;
+    loadBtn.textContent = '加载中...';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/record/load`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+            isConnected = true;
+            startVideoStream();
+            updateConnectionStatus(true);
+            alert('记录文件加载成功！');
+        } else {
+            throw new Error(data.message || '加载失败');
+        }
+    } catch (error) {
+        console.error('加载错误:', error);
+        alert('加载失败: ' + error.message);
+    } finally {
+        loadBtn.disabled = false;
+        loadBtn.textContent = '加载';
+    }
+}
+
+// 启动视频流
+function startVideoStream() {
+  const videoPlayer = document.getElementById('videoPlayer');
+  if (!videoPlayer) {
+    console.warn('[startVideoStream] #videoPlayer not found');
+    return;
+  }
+
+  // 清除之前的视频流
+  videoPlayer.src = '';
+
+  // 添加错误处理
+  videoPlayer.onerror = function () {
+    console.error('视频流加载错误');
+    showNotification('视频流加载失败，请检查连接', 'error');
+  };
+
+  // 可选：更容易看日志
+  videoPlayer.onloadstart = function () {
+    console.log('开始加载视频流');
+    showNotification('正在加载视频流...', 'info');
+  };
+
+  videoPlayer.onloadeddata = function () {
+    console.log('视频流加载完成');
+    showNotification('视频流加载完成', 'success');
+  };
+
+  // ✅ 关键：指向后端 5000，而不是前端域名
+  // 适用于常见的 MJPEG /video_feed（img标签）或其它后端实现
+  const url = `${BACKEND_ORIGIN}/video_feed?ts=${Date.now()}`;
+  console.log('[startVideoStream] video url =', url);
+
+  videoPlayer.src = url;
+  videoStream = url;
+}
+
+
+// 更新连接状态显示
+function updateConnectionStatus(connected, detailText = '') {
+  // 顶部状态（你 HTML 里已有）
+  const top = document.getElementById('connectionStatus');
+  if (top) top.textContent = connected ? '已连接' : '未连接';
+
+  // 在线 tab 按钮下状态
+  const row = ensureOnlineStatusRow();
+  if (!row) return;
+
+  const dot = document.getElementById('onlineConnectionStatusDot');
+  const text = document.getElementById('onlineConnectionStatusText');
+
+  const baseText = connected ? '已连接' : '未连接';
+  const fullText = detailText ? `${baseText}（${detailText}）` : baseText;
+
+  if (text) text.textContent = fullText;
+
+  // 不指定颜色也行；如果你不介意小小配色，这里更直观
+  if (dot) dot.style.color = connected ? '#1a7f37' : '#999';
+}
+
+function ensureOnlineStatusRow() {
+  // 连接按钮（在线 tab 里的 primary-btn）
+  const btn = document.querySelector('#onlineTab .primary-btn');
+  if (!btn) {
+    console.warn('[ensureOnlineStatusRow] connect button not found');
+    return null;
+  }
+
+  // 已创建过就直接返回
+  let row = document.getElementById('onlineConnectionStatusRow');
+  if (row) return row;
+
+  // 创建一行：● + 文本
+  row = document.createElement('div');
+  row.id = 'onlineConnectionStatusRow';
+  row.style.marginTop = '8px';
+  row.style.display = 'flex';
+  row.style.alignItems = 'center';
+  row.style.gap = '8px';
+  row.style.fontSize = '13px';
+  row.style.color = '#666';
+
+  const dot = document.createElement('span');
+  dot.id = 'onlineConnectionStatusDot';
+  dot.textContent = '●';
+  dot.style.fontSize = '12px';
+
+  const text = document.createElement('span');
+  text.id = 'onlineConnectionStatusText';
+  text.textContent = '未连接';
+
+  row.appendChild(dot);
+  row.appendChild(text);
+
+  // 插到按钮下面
+  const parent = btn.parentNode;
+  parent.insertBefore(row, btn.nextSibling);
+
+  return row;
+}
+
+
+
+// 获取车道配置
+function getLanesConfig() {
+    console.log('获取车道配置');
+    return lanes.map(lane => ({
+        ...lane,
+        points: lane.points.map(p => ({ x: p.x, y: p.y }))
+    }));
+}
+
+// 获取触发线配置
+function getTriggersConfig() {
+    console.log('获取触发线配置');
+    return triggers.map(trigger => ({
+        ...trigger,
+        points: trigger.points.map(p => ({ x: p.x, y: p.y }))
+    }));
+}
+
+
+// 保存配置
+async function saveConfig() {
+    try {
+const config = {
+            lanes: getLanesConfig(),
+                    triggers: getTriggersConfig(),
+                    videoSize: {
+                        width: videoNaturalWidth,
+                        height: videoNaturalHeight
+                    }
+        };
+
+        const response = await fetch(`${API_BASE_URL}/config/save`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(config)
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('配置保存成功！');
+        } else {
+            throw new Error(data.message || '保存失败');
+        }
+    } catch (error) {
+        console.error('保存配置错误:', error);
+        alert('保存配置失败: ' + error.message);
+    } 
+}
+
+// 应用配置到界面
+function applyConfig(config) {
+    console.log('应用配置:', config);
+    
+    try {
+        // 应用车道配置
+        if (config.lanes && Array.isArray(config.lanes)) {
+            // 清空现有车道
+            lanes = [];
+            
+            // 添加新车道
+            config.lanes.forEach((lane, idx) => {
+                const newLane = {
+                    ...lane,
+                    name: lane.name || `车道${lane.number || idx + 1}`,
+                    // 确保points数组存在且格式正确
+                    points: (lane.points || []).map(p => ({ x: p.x, y: p.y }))
+                };
+                lanes.push(newLane);
+            });
+            
+            console.log('应用车道配置:', lanes);
+        }
+        
+        // 应用触发线配置
+        if (config.triggers && Array.isArray(config.triggers)) {
+            // 清空现有触发线
+            triggers = [];
+            
+            // 添加新触发线
+            config.triggers.forEach(trigger => {
+                const newTrigger = {
+                    ...trigger,
+                    // 确保points数组存在且格式正确
+                    points: (trigger.points || []).map(p => ({ x: p.x, y: p.y }))
+                };
+                triggers.push(newTrigger);
+            });
+            
+            console.log('应用触发线配置:', triggers);
+        }
+        
+        // 如果配置中有视频尺寸信息，且当前视频尺寸为0，尝试使用配置中的尺寸
+        if (config.videoSize && videoNaturalWidth === 0 && videoNaturalHeight === 0) {
+            videoNaturalWidth = config.videoSize.width;
+            videoNaturalHeight = config.videoSize.height;
+            console.log('使用配置中的视频尺寸:', config.videoSize);
+        }
+        
+        // 清除选中状态
+        selectedItem = null;
+        currentLane = null;
+        currentTrigger = null;
+        
+        // 重新绘制所有内容
+        redrawAll();
+        
+        // 更新UI显示
+        updateUI();
+        
+        // 更新配置显示
+        updateConfigDisplay(config);
+        
+        console.log('配置应用成功');
+        
+    } catch (error) {
+        console.error('应用配置失败:', error);
+        alert('应用配置失败: ' + error.message);
+    }
+}
+
+// 更新配置显示
+function updateConfigDisplay(config) {
+    const lanesContainer = document.getElementById('lanesContainer');
+    const triggersContainer = document.getElementById('triggersContainer');
+    
+    // 更新车道列表显示
+    if (lanesContainer) {
+        if (config.lanes && config.lanes.length > 0) {
+            let lanesHtml = '';
+            config.lanes.forEach((lane, index) => {
+                lanesHtml += `
+                    <div class="config-item">
+                        <span class="config-label">${lane.name || `车道${lane.number || index + 1}`}</span>
+                        <div class="config-actions">
+                            <button class="config-btn edit-btn" onclick="editLane(${index})">编辑</button>
+                            <button class="config-btn delete-btn" onclick="deleteLane(${index})">删除</button>
+                        </div>
+                    </div>
+                `;
+            });
+            lanesContainer.innerHTML = lanesHtml;
+        } else {
+            lanesContainer.innerHTML = '<div class="config-item"><span class="config-label">暂无车道配置</span></div>';
+        }
+    }
+    
+    // 更新触发线列表显示
+    if (triggersContainer) {
+        if (config.triggers && config.triggers.length > 0) {
+            let triggersHtml = '';
+            config.triggers.forEach((trigger, index) => {
+                triggersHtml += `
+                    <div class="config-item">
+                        <span class="config-label">${trigger.name || `触发线${index + 1}`}</span>
+                        <div class="config-actions">
+                            <button class="config-btn edit-btn" onclick="editTrigger(${index})">编辑</button>
+                            <button class="config-btn delete-btn" onclick="deleteTrigger(${index})">删除</button>
+                        </div>
+                    </div>
+                `;
+            });
+            triggersContainer.innerHTML = triggersHtml;
+        } else {
+            triggersContainer.innerHTML = '<div class="config-item"><span class="config-label">暂无触发线配置</span></div>';
+        }
+    }
+}
+
+
+// 编辑车道
+function editLane(index) {
+    if (index >= 0 && index < lanes.length) {
+        selectedItem = lanes[index];
+        updateUI();
+        console.log('编辑车道:', selectedItem);
+    } else {
+        console.warn('无效的车道索引:', index);
+    }
+}
+
+
+// 删除车道
+function deleteLane(index) {
+    if (index >= 0 && index < lanes.length) {
+        if (confirm('确定要删除这条车道吗？')) {
+            lanes.splice(index, 1);
+            
+            // 如果删除的是当前选中的车道，清除选中状态
+            if (selectedItem && selectedItem.type === 'lane' && selectedItem === lanes[index]) {
+                selectedItem = null;
+            }
+            
+            redrawAll();
+            updateUI();
+            updateConfigDisplay({ lanes: lanes, triggers: triggers });
+            console.log('删除车道成功');
+        }
+    } else {
+        console.warn('无效的车道索引:', index);
+    }
+}
+
+// 编辑触发线
+function editTrigger(index) {
+    if (index >= 0 && index < triggers.length) {
+        selectedItem = triggers[index];
+        updateUI();
+        console.log('编辑触发线:', selectedItem);
+    } else {
+        console.warn('无效的触发线索引:', index);
+    }
+}
+
+
+// 删除触发线
+function deleteTrigger(index) {
+    if (index >= 0 && index < triggers.length) {
+        if (confirm('确定要删除这条触发线吗？')) {
+            triggers.splice(index, 1);
+            
+            // 如果删除的是当前选中的触发线，清除选中状态
+            if (selectedItem && selectedItem.type === 'trigger' && selectedItem === triggers[index]) {
+                selectedItem = null;
+            }
+            
+            redrawAll();
+            updateUI();
+            updateConfigDisplay({ lanes: lanes, triggers: triggers });
+            console.log('删除触发线成功');
+        }
+    } else {
+        console.warn('无效的触发线索引:', index);
+    }
+}
+
+// 加载配置
+async function loadConfig() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/config/load`);
+        
+        // 检查HTTP状态码
+        if (!response.ok) {
+            throw new Error(`HTTP错误: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            applyConfig(data.config);
+            alert('配置加载成功！');
+        } else {
+            throw new Error(data.message || '加载失败');
+        }
+    } catch (error) {
+        console.error('加载配置错误:', error);
+        
+        // 提供更详细的错误信息
+        if (error.message.includes('Failed to fetch')) {
+            alert('加载配置失败: 无法连接到后端服务，请确保后端服务已启动');
+        } else if (error.message.includes('HTTP错误: 404')) {
+            alert('加载配置失败: 后端API接口不存在');
+        } else {
+            alert('加载配置失败: ' + error.message);
+        }
+    }
+}
+
+// 导出数据
+async function exportData() {
+    // 导出时，坐标已经是实际视频尺寸的坐标，直接使用
+    // 但需要添加视频尺寸信息以便后续使用
+    const data = {
+        lanes: lanes.map(lane => ({
+            ...lane,
+            points: lane.points.map(p => ({ x: p.x, y: p.y }))
+        })),
+        triggers: triggers.map(trigger => ({
+            ...trigger,
+            points: trigger.points.map(p => ({ x: p.x, y: p.y }))
+        })),
+        videoSize: {
+            width: videoNaturalWidth,
+            height: videoNaturalHeight
+        },
+        exportTime: new Date().toISOString()
+    };
+
+    const dataStr = JSON.stringify(data, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'lane_trigger_data.json';
+    link.click();
+    
+    URL.revokeObjectURL(url);
+}
+
+
+function resetAnnotationsUI() {
+    // 结束绘制态
+    isDrawing = false;
+    currentLane = null;
+    currentTrigger = null;
+    selectedItem = null;
+    dragStart = null;
+    dragTarget = null;
+
+    // 清空标注数据
+    lanes = [];
+    triggers = [];
+
+    // 立刻刷新画布与列表
+    redrawAll();
+    updateUI();
+
+    // 统计面板立刻回到等待（避免等下一次 interval）
+    updateStatsDisplay({});
+}
+
+// 清理资源（前端标注 + 后端连接）
+async function clearAll() {
+    if (!confirm('确定要清空所有触发线和车道吗？')) return;
+    resetAnnotationsUI();
+}
+
+function toggleFullscreen() {
+    const videoContainer = document.querySelector('.video-container');
+    if (!document.fullscreenElement) {
+        videoContainer.requestFullscreen?.();
+    } else {
+        document.exitFullscreen?.();
+    }
+}
+
+// 监听全屏状态变化
+document.addEventListener('fullscreenchange', handleFullscreenChange);
+document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+function handleFullscreenChange() {
+    const videoSection = document.querySelector('.video-section');
+    const videoContainer = document.querySelector('.video-container');
+    
+    
+    if (document.fullscreenElement) {
+        // 进入全屏状态
+        videoSection.classList.add('fullscreen');
+        videoContainer.classList.add('fullscreen');
+        
+        // 更新全屏按钮文本
+        const fullscreenBtn = document.querySelector('.video-controls .control-btn');
+        fullscreenBtn.textContent = '退出全屏';
+        
+        // 调整视频和canvas尺寸
+        adjustVideoSize();
+    } else {
+        // 退出全屏状态
+        videoSection.classList.remove('fullscreen');
+        videoContainer.classList.remove('fullscreen');
+        
+        // 更新全屏按钮文本
+        const fullscreenBtn = document.querySelector('.video-controls .control-btn');
+        fullscreenBtn.textContent = '全屏';
+        
+        // 恢复视频和canvas尺寸
+        adjustVideoSize();
+    }
+}
+
+// 调整视频和canvas尺寸
+function adjustVideoSize() {
+    const videoContainer = document.querySelector('.video-container');
+    const videoPlayer = document.getElementById('videoPlayer');
+    const drawCanvas = document.getElementById('drawCanvas');
+    const overlayCanvas = document.getElementById('overlayCanvas');
+
+
+    // 添加null检查
+    if (!videoContainer || !videoPlayer || !drawCanvas || !overlayCanvas) {
+        console.warn('视频相关DOM元素未找到，无法调整尺寸');
+        return;
+    }
+
+    
+    if (document.fullscreenElement) {
+        // 全屏状态：使用窗口尺寸
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        
+        videoContainer.style.width = width + 'px';
+        videoContainer.style.height = height + 'px';
+        videoPlayer.style.width = width + 'px';
+        videoPlayer.style.height = height + 'px';
+        drawCanvas.width = width;
+        drawCanvas.height = height;
+        overlayCanvas.width = width;
+        overlayCanvas.height = height;
+    } else {
+        // 正常状态：使用自适应高度
+        const containerWidth = videoContainer.clientWidth;
+        
+        // 获取视频的实际比例
+        const videoRatio = getVideoAspectRatio(videoPlayer);
+        
+        // 根据视频比例计算容器高度
+        let containerHeight;
+        if (videoRatio > 0) {
+            containerHeight = containerWidth / videoRatio;
+        } else {
+            // 如果无法获取视频比例，使用默认的16:9比例
+            containerHeight = containerWidth * 9 / 16;
+        }
+        
+        // 设置容器高度，但不超过父容器可用高度
+        const parentHeight = videoContainer.parentElement.clientHeight;
+        const maxHeight = parentHeight - 80; // 预留空间给标题和控制按钮
+        
+        if (containerHeight > maxHeight) {
+            containerHeight = maxHeight;
+        }
+        
+        videoContainer.style.height = containerHeight + 'px';
+        
+        // 设置视频和画布尺寸
+        videoPlayer.style.width = '100%';
+        videoPlayer.style.height = '100%';
+        drawCanvas.width = containerWidth;
+        drawCanvas.height = containerHeight;
+        overlayCanvas.width = containerWidth;
+        overlayCanvas.height = containerHeight;
+    }
+}
+
+// 获取视频的宽高比例
+function getVideoAspectRatio(videoPlayer) {
+    // 如果视频已加载元数据，使用实际尺寸
+    if (videoPlayer.videoWidth > 0 && videoPlayer.videoHeight > 0) {
+        return videoPlayer.videoWidth / videoPlayer.videoHeight;
+    }
+    
+    // 如果视频有src属性但未加载，尝试从URL推断
+    if (videoPlayer.src) {
+        // 这里可以根据视频源推断比例，或者使用默认比例
+        // 暂时返回0，让函数使用默认比例
+        return 0;
+    }
+    
+    return 0; // 返回0表示使用默认比例
+}
+
+// 在全局暴露点云重置函数
+window.pointcloudResize = function() {
+    if (window.onWindowResize) {
+        window.onWindowResize();
+    }
+};
+
+// 修改resize监听器
+window.addEventListener('resize', function() {
+    adjustVideoSize(); // 调整视频尺寸
+    
+    // 同时调整点云容器尺寸
+    setTimeout(() => {
+        if (window.pointcloudResize) {
+            window.pointcloudResize();
+        }
+    }, 100);
+});
+
+
+// 检查后端健康状态
+async function checkBackendHealth() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/health`);
+        if (response.ok) {
+            const data = await response.json();
+            console.log('后端服务正常:', data);
+            showNotification('后端服务已启动，可以正常使用', 'success');
+        } else {
+            console.warn('后端服务未就绪');
+            showNotification('后端服务未启动，请先启动后端服务', 'warning');
+        }
+    } catch (error) {
+        console.warn('无法连接到后端服务:', error);
+        showNotification('后端服务未启动，请先启动后端服务', 'warning');
+    }
+}
+
+
+// 确保只有一个DOMContentLoaded事件监听器
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
+
+function initApp() {
+    // 延迟检查后端健康状态
+    setTimeout(checkBackendHealth, 1000);
+    
+    // 绑定顶部导航栏按钮事件
+    document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
+    document.getElementById('loadConfigBtn').addEventListener('click', loadConfig);
+    document.getElementById('exportDataBtn').addEventListener('click', exportData);
+    
+    // 绑定数据源区域按钮事件
+    document.querySelector('#onlineTab .primary-btn').addEventListener('click', connect);
+    document.querySelector('#recordTab .primary-btn').addEventListener('click', loadRecord);
+    
+    // 绑定标签页切换按钮事件
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const tabName = this.textContent === '在线配置' ? 'online' : 'record';
+            switchTab(tabName);
+        });
+    });
+    
+    // 绑定绘制工具按钮事件
+    document.querySelectorAll('.tool-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            if (this.textContent.includes('车道')) {
+                setTool('lane');
+            } else if (this.textContent.includes('触发线')) {
+                setTool('trigger');
+            } else if (this.textContent.includes('清空')) {
+                clearAll();
+            }
+        });
+    });
+    
+    // 绑定全屏按钮事件
+    document.querySelector('.video-controls .control-btn').addEventListener('click', toggleFullscreen);
+    
+    // 绑定面板标签页切换事件
+    document.querySelectorAll('.panel-tab-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const tabName = this.textContent === '实时统计数据' ? 'stats' : 
+                           this.textContent === '车道列表' ? 'lanes' : 'triggers';
+            switchPanelTab(tabName);
+        });
+    });
+    
+    // 默认设置为收缩状态
+    const dataSourceBar = document.querySelector('.data-source-bar');
+    const toggleBtn = document.getElementById('toggleDataSource');
+    
+    dataSourceBar.classList.add('collapsed');
+    toggleBtn.classList.add('collapsed');
+    toggleBtn.textContent = '▼';
+    
+    updateMainContentLayout();
+    
+    // 延迟执行以确保DOM完全加载
+    setTimeout(() => {
+        adjustVideoSize();
+        
+        // 监听标签页切换，确保视频尺寸正确
+        const tabs = document.querySelectorAll('.tab-btn');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                setTimeout(adjustVideoSize, 100); // 延迟调整
+            });
+        });
+    }, 300);
+}
+
+// 更新统计数据
+async function updateStats() {
+  const statsContainer = document.getElementById('statsContainer');
+  if (!statsContainer) return;
+
+  if (!isConnected) {
+    updateStatsDisplay({});
+    return;
+  }
+
+  const url = `${API_BASE_URL}/stats?ts=${Date.now()}`;
+  console.log('[updateStats] fetching:', url);
+
+  try {
+    const resp = await fetch(url, { cache: 'no-store' });
+
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+    }
+
+    const data = await resp.json();
+    console.log('[updateStats] resp:', data);
+
+    if (!data.success) {
+      updateStatsDisplay({});
+      return;
+    }
+
+    // 这里沿用你原来的渲染逻辑
+    const stats = data.stats || {};
+    statsContainer.innerHTML = '';
+
+    if (Object.keys(stats).length === 0) {
+      statsContainer.innerHTML = '<div class="stats-item"><span class="stats-label">等待数据...</span></div>';
+      return;
+    }
+
+    Object.keys(stats).forEach(regionName => {
+      const regionStats = stats[regionName];
+      const statsItem = document.createElement('div');
+      statsItem.className = 'stats-item';
+
+      const displayName = regionName === 'total' ? '总计' : regionName;
+
+      statsItem.innerHTML = `
+        <span class="stats-label">${displayName}</span>
+        <div class="stats-count">${regionStats.image_count ?? 0}</div>
+        <div class="stats-subcount">事件数: ${regionStats.event_count ?? 0}</div>
+      `;
+
+      if (regionName === 'total') {
+        statsItem.style.borderTop = '2px solid #4285F4';
+        statsItem.style.fontWeight = 'bold';
+      }
+
+      statsContainer.appendChild(statsItem);
+    });
+
+  } catch (e) {
+    console.error('[updateStats] failed:', e);
+    // 出错也给用户一个可见状态（否则一直“等待数据...”很难判断）
+    statsContainer.innerHTML = `<div class="stats-item"><span class="stats-label">统计请求失败：${e.message}</span></div>`;
+  }
+}
+
+
+
+function updateStatsDisplay(stats) {
+    const statsContainer = document.getElementById('statsContainer');
+    if (!statsContainer) return;
+    
+    if (!stats || Object.keys(stats).length === 0) {
+        statsContainer.innerHTML = '<div class="stats-item"><span class="stats-label">等待数据...</span></div>';
+        return;
+    }
+    
+    let html = '';
+    Object.keys(stats).forEach(regionName => {
+        const regionStats = stats[regionName];
+        const displayName = regionName === 'total' ? '总计' : regionName;
+        const specialStyle = regionName === 'total' ? 'style="border-top: 2px solid #4285F4; font-weight: bold;"' : '';
+        
+        html += `
+            <div class="stats-item" ${specialStyle}>
+                <span class="stats-label">${displayName}</span>
+                <div class="stats-count">${regionStats.image_count || 0}</div>
+                <div class="stats-subcount">事件数: ${regionStats.event_count || 0}</div>
+            </div>
+        `;
+    });
+    
+    statsContainer.innerHTML = html;
+}
+
+
+// 数据源设置收缩/展开功能
+function toggleDataSource() {
+    const dataSourceBar = document.querySelector('.data-source-bar');
+    const toggleBtn = document.getElementById('toggleDataSource');
+    const dataSourceContent = document.getElementById('dataSourceContent');
+    
+    dataSourceBar.classList.toggle('collapsed');
+    toggleBtn.classList.toggle('collapsed');
+    
+    // 更新按钮文本
+    if (dataSourceBar.classList.contains('collapsed')) {
+        toggleBtn.textContent = '▼';
+    } else {
+        toggleBtn.textContent = '▲';
+    }
+    
+    // 更新主内容区布局
+    updateMainContentLayout();
+}
+
+// 更新主内容区布局
+function updateMainContentLayout() {
+    const dataSourceBar = document.querySelector('.data-source-bar');
+    const mainContent = document.querySelector('.main-content');
+
+    // 添加null检查
+    if (!dataSourceBar || !mainContent) {
+        console.warn('DOM元素未找到，无法更新布局');
+        return;
+    }
+    
+    if (dataSourceBar.classList.contains('collapsed')) {
+        // 收缩状态：使用更小的行高
+        mainContent.style.gridTemplateRows = '60px 1fr';
+    } else {
+        // 展开状态：使用自动行高
+        mainContent.style.gridTemplateRows = 'auto 1fr';
+    }
+}
+
+// 将显示坐标转换为实际视频坐标
+function displayToActual(displayX, displayY) {
+    if (videoNaturalWidth === 0 || videoNaturalHeight === 0) {
+        return { x: displayX, y: displayY };
+    }
+    
+    const rect = getVideoDisplayRect();
+    
+    // 将显示坐标转换为相对于视频显示区域的坐标
+    const relativeX = displayX - rect.x;
+    const relativeY = displayY - rect.y;
+    
+    // 转换为实际视频坐标
+    const actualX = relativeX / rect.scaleX;
+    const actualY = relativeY / rect.scaleY;
+    
+    // 确保坐标在有效范围内
+    return {
+        x: Math.max(0, Math.min(videoNaturalWidth, actualX)),
+        y: Math.max(0, Math.min(videoNaturalHeight, actualY))
+    };
+}
+
+// 绘图事件处理函数
+function startDrawing(e) {
+    e.preventDefault();
+    
+    // 获取鼠标在画布上的坐标
+    const rect = drawCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // 将显示坐标转换为实际坐标
+    const actualPoint = displayToActual(x, y);
+    
+    if (currentTool === 'lane') {
+        // 开始绘制车道
+        currentLane = {
+            id: Date.now(),
+            type: 'lane',
+            number: lanes.length + 1,
+            name: `车道${lanes.length + 1}`,
+            color: '#4285F4',
+            width: 3,
+            points: [actualPoint]
+        };
+        lanes.push(currentLane);
+        selectedItem = currentLane;
+    } else if (currentTool === 'trigger') {
+        // 开始绘制触发线
+        currentTrigger = {
+            id: Date.now(),
+            type: 'trigger',
+            name: `触发线${triggers.length + 1}`,
+            color: '#FF6D00',
+            width: 2,
+            points: [actualPoint]
+        };
+        triggers.push(currentTrigger);
+        selectedItem = currentTrigger;
+    }
+    
+    // 绑定移动和抬起事件
+    drawCanvas.addEventListener('mousemove', draw);
+    drawCanvas.addEventListener('mouseup', stopDrawing);
+    drawCanvas.addEventListener('dblclick', completeDrawing);
+    
+    redrawAll();
+    updateUI();
+}
+
+function draw(e) {
+    e.preventDefault();
+    
+    if (!currentLane && !currentTrigger) return;
+    
+    // 获取鼠标在画布上的坐标
+    const rect = drawCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // 将显示坐标转换为实际坐标
+    const actualPoint = displayToActual(x, y);
+    
+    // 更新当前绘制对象的最后一个点
+    if (currentLane) {
+        if (currentLane.points.length === 1) {
+            // 添加第二个点
+            currentLane.points.push(actualPoint);
+        } else {
+            // 更新最后一个点
+            currentLane.points[currentLane.points.length - 1] = actualPoint;
+        }
+    } else if (currentTrigger) {
+        if (currentTrigger.points.length === 1) {
+            // 添加第二个点
+            currentTrigger.points.push(actualPoint);
+        } else {
+            // 更新最后一个点
+            currentTrigger.points[currentTrigger.points.length - 1] = actualPoint;
+        }
+    }
+    
+    redrawAll();
+}
+
+
+function stopDrawing(e) {
+    e.preventDefault();
+    
+    // 移除事件监听器
+    drawCanvas.removeEventListener('mousemove', draw);
+    drawCanvas.removeEventListener('mouseup', stopDrawing);
+    
+    redrawAll();
+}
+
+function completeDrawing(e) {
+    e.preventDefault();
+    
+    // 移除事件监听器
+    drawCanvas.removeEventListener('mousemove', draw);
+    drawCanvas.removeEventListener('mouseup', stopDrawing);
+    drawCanvas.removeEventListener('dblclick', completeDrawing);
+    
+    // 完成当前绘制
+    if (currentLane) {
+        currentLane = null;
+    } else if (currentTrigger) {
+        currentTrigger = null;
+    }
+    
+    redrawAll();
+    updateUI();
+}
+
+function checkControlPointClick(e) {
+    e.preventDefault();
+    
+    // 获取鼠标在画布上的坐标
+    const rect = drawCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // 检查是否点击了控制点
+    const allItems = [...lanes, ...triggers];
+    
+    for (const item of allItems) {
+        for (const point of item.points) {
+            const displayPoint = actualToDisplay(point.x, point.y);
+            const distance = Math.sqrt(Math.pow(x - displayPoint.x, 2) + Math.pow(y - displayPoint.y, 2));
+            
+            if (distance <= 10) { // 控制点半径
+                selectedItem = item;
+                redrawAll();
+                updateUI();
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+function checkLineClick(e) {
+    e.preventDefault();
+    
+    // 获取鼠标在画布上的坐标
+    const rect = drawCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // 检查是否点击了线段
+    const allItems = [...lanes, ...triggers];
+    
+    for (const item of allItems) {
+        if (item.points.length < 2) continue;
+        
+        for (let i = 0; i < item.points.length - 1; i++) {
+            const p1 = actualToDisplay(item.points[i].x, item.points[i].y);
+            const p2 = actualToDisplay(item.points[i + 1].x, item.points[i + 1].y);
+            
+            // 计算点到线段的距离
+            const distance = pointToLineDistance(x, y, p1.x, p1.y, p2.x, p2.y);
+            
+            if (distance <= 10) { // 线段点击阈值
+                selectedItem = item;
+                redrawAll();
+                updateUI();
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+// 计算点到线段的距离
+function pointToLineDistance(px, py, x1, y1, x2, y2) {
+    const A = px - x1;
+    const B = py - y1;
+    const C = x2 - x1;
+    const D = y2 - y1;
+    
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = -1;
+    
+    if (lenSq !== 0) {
+        param = dot / lenSq;
+    }
+    
+    let xx, yy;
+    
+    if (param < 0) {
+        xx = x1;
+        yy = y1;
+    } else if (param > 1) {
+        xx = x2;
+        yy = y2;
+    } else {
+        xx = x1 + param * C;
+        yy = y1 + param * D;
+    }
+    
+    const dx = px - xx;
+    const dy = py - yy;
+    
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+// 初始化画布事件监听器
+function initializeCanvasEventListeners() {
+    // 获取Canvas元素
+    drawCanvas = document.getElementById('drawCanvas');
+    overlayCanvas = document.getElementById('overlayCanvas');
+    
+    if (drawCanvas && overlayCanvas) {
+        // 获取2D上下文
+        ctx = drawCanvas.getContext('2d');
+        overlayCtx = overlayCanvas.getContext('2d');
+        
+        // 绑定鼠标事件
+        drawCanvas.addEventListener('mousedown', function(e) {
+            // 先检查是否点击了控制点
+            if (!checkControlPointClick(e)) {
+                // 再检查是否点击了线段
+                if (!checkLineClick(e)) {
+                    // 最后开始新的绘制
+                    startDrawing(e);
+                }
+            }
+        });
+    }
+}
+
+// 在initApp函数中调用初始化
+function initApp() {
+    // 延迟检查后端健康状态
+    setTimeout(checkBackendHealth, 1000);
+    
+    // 绑定顶部导航栏按钮事件
+    document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
+    document.getElementById('loadConfigBtn').addEventListener('click', loadConfig);
+    document.getElementById('exportDataBtn').addEventListener('click', exportData);
+    
+    // 绑定数据源区域按钮事件
+    document.querySelector('#onlineTab .primary-btn').addEventListener('click', connect);
+    document.querySelector('#recordTab .primary-btn').addEventListener('click', loadRecord);
+    
+    // 绑定标签页切换按钮事件
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const tabName = this.textContent === '在线配置' ? 'online' : 'record';
+            switchTab(tabName);
+        });
+    });
+    
+    // 绑定绘制工具按钮事件
+    document.querySelectorAll('.tool-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            if (this.textContent.includes('车道')) {
+                setTool('lane');
+            } else if (this.textContent.includes('触发线')) {
+                setTool('trigger');
+            } else if (this.textContent.includes('清空')) {
+                clearAll();
+            }
+        });
+    });
+    
+    // 绑定全屏按钮事件
+    document.querySelector('.video-controls .control-btn').addEventListener('click', toggleFullscreen);
+    
+    // 绑定面板标签页切换事件
+    document.querySelectorAll('.panel-tab-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const tabName = this.textContent === '实时统计数据' ? 'stats' : 
+                           this.textContent === '车道列表' ? 'lanes' : 'triggers';
+            switchPanelTab(tabName);
+        });
+    });
+    
+    // 初始化画布事件监听器
+    initializeCanvasEventListeners();
+    
+    // 默认设置为收缩状态
+    const dataSourceBar = document.querySelector('.data-source-bar');
+    const toggleBtn = document.getElementById('toggleDataSource');
+    
+    dataSourceBar.classList.add('collapsed');
+    toggleBtn.classList.add('collapsed');
+    toggleBtn.textContent = '▼';
+    
+    updateMainContentLayout();
+    
+    // 延迟执行以确保DOM完全加载
+    setTimeout(() => {
+        adjustVideoSize();
+        
+        // 监听标签页切换，确保视频尺寸正确
+        const tabs = document.querySelectorAll('.tab-btn');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                setTimeout(adjustVideoSize, 100); // 延迟调整
+            });
+        });
+    }, 300);
+}
+
+// 将实际视频坐标转换为显示坐标
+function actualToDisplay(actualX, actualY) {
+    if (videoNaturalWidth === 0 || videoNaturalHeight === 0) {
+        return { x: actualX, y: actualY };
+    }
+    
+    const rect = getVideoDisplayRect();
+    
+    // 将实际坐标转换为显示坐标
+    const displayX = actualX * rect.scaleX + rect.x;
+    const displayY = actualY * rect.scaleY + rect.y;
+    
+    return { x: displayX, y: displayY };
+}
+
+
+// 获取视频在容器中的实际显示区域（考虑object-fit: contain）
+function getVideoDisplayRect() {
+    const containerWidth = videoPlayer.offsetWidth;
+    const containerHeight = videoPlayer.offsetHeight;
+    
+    if (videoNaturalWidth === 0 || videoNaturalHeight === 0) {
+        return { x: 0, y: 0, width: containerWidth, height: containerHeight, scaleX: 1, scaleY: 1 };
+    }
+    
+    const videoAspect = videoNaturalWidth / videoNaturalHeight;
+    const containerAspect = containerWidth / containerHeight;
+    
+    let displayWidth, displayHeight, offsetX, offsetY;
+    
+    if (videoAspect > containerAspect) {
+        // 视频更宽，以宽度为准
+        displayWidth = containerWidth;
+        displayHeight = containerWidth / videoAspect;
+        offsetX = 0;
+        offsetY = (containerHeight - displayHeight) / 2;
+    } else {
+        // 视频更高，以高度为准
+        displayWidth = containerHeight * videoAspect;
+        displayHeight = containerHeight;
+        offsetX = (containerWidth - displayWidth) / 2;
+        offsetY = 0;
+    }
+    
+    const scaleX = displayWidth / videoNaturalWidth;
+    const scaleY = displayHeight / videoNaturalHeight;
+    
+    return {
+        x: offsetX,
+        y: offsetY,
+        width: displayWidth,
+        height: displayHeight,
+        scaleX: scaleX,
+        scaleY: scaleY
+    };
+}
+

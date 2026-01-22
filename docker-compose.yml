@@ -1,0 +1,14 @@
+services:
+  validation_tool:
+    build: .
+    container_name: validation_tool
+    volumes:
+      - ${PWD}:/app  # 使用绝对路径映射当前项目目录
+      - ${PWD}/apollo:/apollo  # 使用绝对路径映射apollo目录
+    working_dir: /app  # 设置工作目录为/app
+    environment:
+      - PYTHONPATH=/app:/app/proto
+      - APP_PATH=/app
+    stdin_open: true
+    tty: true
+    command: bash
