@@ -90,7 +90,6 @@ body {
     margin-bottom: 0.5rem;
     border-bottom: 1px solid #e9ecef;
     position: relative;
-    /* 添加相对定位 */
 }
 
 /* 视频显示区 */
@@ -156,11 +155,9 @@ body {
     flex-shrink: 0;
 }
 
-/* 删除第800-810行的重复规则 */
 .data-source-bar.collapsed {
     padding: 0.3rem 0.8rem;
     max-height: 50px;
-    /* 收缩状态的最大高度 */
     overflow: hidden;
 }
 
@@ -175,9 +172,7 @@ body {
 /* 左侧：视频和绘制工具 */
 .video-tools-section {
     grid-column: 1;
-    /* 第一列：视频 */
     grid-row: 2;
-    /* 第二行 */
     display: flex;
     flex-direction: column;
     gap: 1rem;
@@ -187,9 +182,7 @@ body {
 /* 中间：三维点云显示区 */
 .pointcloud-section {
     grid-column: 2;
-    /* 第二列：点云 */
     grid-row: 2;
-    /* 第二行 */
     background: white;
     border-radius: 8px;
     padding: 1rem;
@@ -201,16 +194,13 @@ body {
 /* 右侧：实时统计数据 */
 .stats-section {
     grid-column: 3;
-    /* 第三列：统计数据 */
     grid-row: 2;
-    /* 第二行 */
     background: white;
     border-radius: 8px;
     padding: 1rem;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     height: fit-content;
     max-height: 100%;
-    /* 限制最大高度 */
     overflow-y: auto;
 }
 
@@ -225,14 +215,12 @@ body {
     width: 100%;
     height: 100%;
     min-height: 300px;
-    /* max-height: 80vh; */
     background: #000;
     border-radius: 4px;
     overflow: hidden;
     margin-bottom: 0.5rem;
     transition: all 0.3s ease;
     flex: 1;
-    /* 添加flex属性以占据可用空间 */
 }
 
 /* 视频显示区 */
@@ -245,17 +233,13 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 300px;
-    /* max-height: 80vh; */
     overflow: hidden;
-    /* 防止内容溢出 */
 }
 
 /* 视频显示区标题 */
 .video-section h3 {
     margin: 0 0 0.5rem 0;
-    /* 减少下边距 */
     font-size: 0.9rem;
-    /* 减小字体大小 */
     color: #4285F4;
 }
 
@@ -264,9 +248,7 @@ body {
     display: flex;
     gap: 0.5rem;
     margin-top: 0.3rem;
-    /* 减少上边距 */
     padding: 0.2rem 0;
-    /* 添加内边距 */
 }
 
 /* 绘制工具区 */
@@ -321,7 +303,6 @@ body {
     gap: 0.5rem;
     overflow-y: auto;
     min-height: 500px;
-    /* 确保有最小高度 */
 }
 
 /* 视频显示区 */
@@ -331,7 +312,6 @@ body {
     padding: 1rem;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     flex: 1;
-    /* 视频区域占据更多空间 */
     display: flex;
     flex-direction: column;
 }
@@ -343,7 +323,6 @@ body {
     padding: 0.8rem;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     max-height: 150px;
-    /* 限制高度 */
     overflow-y: auto;
 }
 
@@ -354,7 +333,6 @@ body {
     padding: 0.8rem;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     max-height: 200px;
-    /* 限制高度 */
     overflow-y: auto;
 }
 
@@ -365,16 +343,13 @@ body {
     padding: 1rem;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     max-height: 300px;
-    /* 限制高度 */
     overflow-y: auto;
 }
 
 /* 右侧：三维点云显示区 */
 .pointcloud-section {
     grid-column: 2;
-    /* 第二列 */
     grid-row: 2;
-    /* 第二行 */
     background: white;
     border-radius: 8px;
     padding: 1rem;
@@ -405,11 +380,9 @@ body {
     color: white;
     border: none;
     padding: 0.4rem 0.8rem;
-    /* 缩小内边距 */
     border-radius: 4px;
     cursor: pointer;
     font-size: 0.85rem;
-    /* 缩小字体大小 */
 }
 
 .pointcloud-controls button:hover {
@@ -470,17 +443,13 @@ body {
 .tool-btn {
     flex: 1;
     padding: 0.4rem 0.6rem;
-    /* 进一步缩小内边距 */
     border: 1px solid #ddd;
     background: white;
     cursor: pointer;
     border-radius: 4px;
     font-size: 0.8rem;
-    /* 进一步缩小字体大小 */
     line-height: 1.2;
-    /* 减小行高 */
     min-height: auto;
-    /* 移除最小高度限制 */
 }
 
 .tool-btn.active {
@@ -532,12 +501,10 @@ body {
     color: white;
     border: none;
     padding: 0.6rem 1.2rem;
-    /* 缩小内边距 */
     border-radius: 4px;
     cursor: pointer;
     width: 100%;
     font-size: 0.9rem;
-    /* 缩小字体大小 */
     margin-top: 0.5rem;
 }
 
@@ -559,13 +526,11 @@ body {
 
 .tab-btn {
     padding: 0.4rem 0.8rem;
-    /* 缩小内边距 */
     background: none;
     border: none;
     cursor: pointer;
     border-bottom: 2px solid transparent;
     font-size: 0.85rem;
-    /* 缩小字体大小 */
 }
 
 .tab-btn.active {
@@ -643,7 +608,6 @@ body {
     position: relative;
     width: 100%;
     height: auto;
-    /* 高度由JavaScript根据视频比例设置 */
     min-height: 300px;
     background: #000;
     border-radius: 4px;
@@ -656,9 +620,7 @@ body {
 #videoPlayer {
     width: 100%;
     height: 100%;
-    /* 使用容器高度 */
     object-fit: contain;
-    /* 保持视频比例 */
     background: #000;
 }
 
@@ -724,9 +686,7 @@ body {
 /* 右侧：数据面板（包含统计数据、车道列表、触发线列表） */
 .data-panel {
     grid-column: 3;
-    /* 第三列 */
     grid-row: 2;
-    /* 第二行 */
     background: white;
     border-radius: 8px;
     padding: 0;
@@ -868,6 +828,55 @@ body {
     color: #4285F4;
 }
 
+/* 车道/触发线列表项：让标题与删除按钮同一行 */
+.items-list .item-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 0.5rem;
+    border-bottom: 1px solid #f1f3f4;
+    cursor: pointer;
+}
+
+.items-list .item-card.selected {
+    background-color: #e3f2fd;
+    border-left: 3px solid #4285F4;
+}
+
+.items-list .item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.items-list .item-title {
+    font-weight: 600;
+    color: #5f6368;
+    line-height: 1.2;
+}
+
+.items-list .item-details {
+    margin-top: 2px;
+    font-size: 0.85rem;
+    color: #80868b;
+}
+
+.items-list .delete-btn {
+    flex: 0 0 auto;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.2rem 0.3rem;
+    border-radius: 4px;
+    line-height: 1;
+    margin-top: 2px;
+}
+
+.items-list .delete-btn:hover {
+    background: #f1f3f4;
+    color: #ea4335;
+}
+
 /* 通知样式 */
 .notification {
     position: fixed;
@@ -983,7 +992,6 @@ body {
     }
 }
 
-// ... existing code ...
 .items-list .item-action.delete:hover {
     color: #ea4335;
 }
@@ -1114,7 +1122,6 @@ body {
     width: 100vw;
     height: 100vh;
     object-fit: contain;
-    /* 保持视频比例 */
 }
 
 .tab-content.active {
@@ -1141,7 +1148,6 @@ body {
     padding: 0.2rem 0.5rem;
     border-radius: 12px;
     font-size: 0.8rem;
-}
 }
 
 .stats-subcount {
@@ -1258,12 +1264,10 @@ body {
     color: white;
     border: none;
     padding: 0.6rem 1.2rem;
-    /* 缩小内边距 */
     border-radius: 4px;
     cursor: pointer;
     width: 100%;
     font-size: 0.9rem;
-    /* 缩小字体大小 */
     margin-top: 0.5rem;
 }
 
@@ -1375,7 +1379,6 @@ body {
     border-radius: 12px;
     font-size: 0.8rem;
 }
-}
 
 .stats-subcount {
     font-size: 0.7rem;
@@ -1410,4 +1413,38 @@ body {
     .video-tools-section {
         flex-direction: column;
     }
+}
+
+
+#lanesList .item-title-row,
+#triggersList .item-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+#lanesList .item-title,
+#triggersList .item-title {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#lanesList .delete-btn,
+#triggersList .delete-btn {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 2px 6px;
+    line-height: 1;
+    color: #999;
+}
+
+#lanesList .delete-btn:hover,
+#triggersList .delete-btn:hover {
+    color: #e53935;
 }

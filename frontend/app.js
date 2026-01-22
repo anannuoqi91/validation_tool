@@ -98,13 +98,7 @@ function initializeEventListeners() {
     document.getElementById('triggerBtn').addEventListener('click', () => setTool('trigger'));
     document.getElementById('clearBtn').addEventListener('click', clearAll);
     
-    // 画布事件
-    drawCanvas.addEventListener('mousedown', startDrawing);
-    drawCanvas.addEventListener('mousemove', draw);
-    drawCanvas.addEventListener('mouseup', stopDrawing);
-    drawCanvas.addEventListener('mouseleave', stopDrawing);
-    drawCanvas.addEventListener('dblclick', completeDrawing);
-    
+    // 画布事件（统一在 initializeCanvasEventListeners() 中绑定，避免重复监听）
     // 数据管理
     document.getElementById('saveBtn').addEventListener('click', saveConfig);
     document.getElementById('loadBtn').addEventListener('click', loadConfig);
@@ -433,81 +427,134 @@ function redrawAll() {
 
 // 更新车道列表
 function updateLanesList() {
-    const lanesList = document.getElementById('lanesList');
-    lanesList.innerHTML = '';
-    
-    lanes.forEach(lane => {
-        const laneCard = document.createElement('div');
-        laneCard.className = 'item-card' + (selectedItem === lane ? ' selected' : '');
-        laneCard.innerHTML = `
-            <div class="item-info">
-                <div class="item-title">${lane.name || `车道 ${lane.number}`}</div>
-                <div class="item-details">编号: ${lane.number} · ${lane.points.length} 个点</div>
-            </div>
-            <button class="delete-btn" title="删除车道">🗑️</button>
-        `;
-        
-        // 点击卡片选择车道
-        laneCard.addEventListener('click', (e) => {
-            // 点击删除按钮不触发选择
-            if (e && e.target && e.target.closest && e.target.closest('.delete-btn')) return;
+  const lanesList = document.getElementById('lanesList');
+  if (!lanesList) return;
+  lanesList.innerHTML = '';
 
-            selectedItem = lane;
-            // 更新属性面板显示
-            document.getElementById('laneProperties').style.display = 'block';
-            document.getElementById('triggerProperties').style.display = 'none';
-            updateUI();
-            redrawAll();
-        });
-        
-        // 点击删除按钮删除车道
-        laneCard.querySelector('.delete-btn').addEventListener('click', (e) => {
-            e.stopPropagation(); // 防止触发卡片点击事件
-            deleteLane(lane.id);
-        });
-        
-        lanesList.appendChild(laneCard);
+  lanes.forEach((lane, index) => {
+    const laneCard = document.createElement('div');
+    laneCard.className = 'item-card' + (selectedItem === lane ? ' selected' : '');
+
+    laneCard.innerHTML = `
+      <div class="item-info">
+        <div class="item-title-row">
+          <div class="item-title">${lane.name || `车道 ${lane.number}`}</div>
+          <button class="delete-btn" type="button" title="删除车道" aria-label="删除车道">🗑️</button>
+        </div>
+        <div class="item-details">编号: ${lane.number} · ${lane.points.length} 个点</div>
+      </div>
+    `;
+
+    // ✅ 强制这一行横向排布（就算你CSS没生效也能顶住）
+    const row = laneCard.querySelector('.item-title-row');
+    const title = laneCard.querySelector('.item-title');
+    const delBtn = laneCard.querySelector('.delete-btn');
+    if (row) {
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.justifyContent = 'space-between';
+      row.style.gap = '8px';
+    }
+    if (title) {
+      title.style.flex = '1';
+      title.style.minWidth = '0';
+      title.style.whiteSpace = 'nowrap';
+      title.style.overflow = 'hidden';
+      title.style.textOverflow = 'ellipsis';
+    }
+    if (delBtn) {
+      delBtn.style.flex = '0 0 auto';
+      delBtn.style.background = 'transparent';
+      delBtn.style.border = 'none';
+      delBtn.style.cursor = 'pointer';
+      delBtn.style.padding = '2px 6px';
+      delBtn.style.lineHeight = '1';
+    }
+
+    // 点击卡片选择（点删除不触发）
+    laneCard.addEventListener('click', (e) => {
+      if (e?.target?.closest?.('.delete-btn')) return;
+      selectedItem = lane;
+      document.getElementById('laneProperties').style.display = 'block';
+      document.getElementById('triggerProperties').style.display = 'none';
+      updateUI();
+      redrawAll();
     });
+
+    // ✅ 删除：传 index（不是 lane.id）
+    delBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteLane(index);
+    });
+
+    lanesList.appendChild(laneCard);
+  });
 }
 
-// 更新触发线列表
 function updateTriggersList() {
-    const triggersList = document.getElementById('triggersList');
-    triggersList.innerHTML = '';
-    
-    triggers.forEach(trigger => {
-        const triggerCard = document.createElement('div');
-        triggerCard.className = 'item-card' + (selectedItem === trigger ? ' selected' : '');
-        triggerCard.innerHTML = `
-            <div class="item-info">
-                <div class="item-title">${trigger.name}</div>
-                <div class="item-details">${trigger.points.length} 个点</div>
-            </div>
-            <button class="delete-btn" title="删除触发线">🗑️</button>
-        `;
-        
-        // 点击卡片选择触发线
-        triggerCard.addEventListener('click', (e) => {
-            // 点击删除按钮不触发选择
-            if (e && e.target && e.target.closest && e.target.closest('.delete-btn')) return;
+  const triggersList = document.getElementById('triggersList');
+  if (!triggersList) return;
+  triggersList.innerHTML = '';
 
-            selectedItem = trigger;
-            // 更新属性面板显示
-            document.getElementById('laneProperties').style.display = 'none';
-            document.getElementById('triggerProperties').style.display = 'block';
-            updateUI();
-            redrawAll();
-        });
-        
-        // 点击删除按钮删除触发线
-        triggerCard.querySelector('.delete-btn').addEventListener('click', (e) => {
-            e.stopPropagation(); // 防止触发卡片点击事件
-            deleteTrigger(trigger.id);
-        });
-        
-        triggersList.appendChild(triggerCard);
+  triggers.forEach((trigger, index) => {
+    const triggerCard = document.createElement('div');
+    triggerCard.className = 'item-card' + (selectedItem === trigger ? ' selected' : '');
+
+    triggerCard.innerHTML = `
+      <div class="item-info">
+        <div class="item-title-row">
+          <div class="item-title">${trigger.name}</div>
+          <button class="delete-btn" type="button" title="删除触发线" aria-label="删除触发线">🗑️</button>
+        </div>
+        <div class="item-details">${trigger.points.length} 个点</div>
+      </div>
+    `;
+
+    // ✅ 强制横向排布
+    const row = triggerCard.querySelector('.item-title-row');
+    const title = triggerCard.querySelector('.item-title');
+    const delBtn = triggerCard.querySelector('.delete-btn');
+    if (row) {
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.justifyContent = 'space-between';
+      row.style.gap = '8px';
+    }
+    if (title) {
+      title.style.flex = '1';
+      title.style.minWidth = '0';
+      title.style.whiteSpace = 'nowrap';
+      title.style.overflow = 'hidden';
+      title.style.textOverflow = 'ellipsis';
+    }
+    if (delBtn) {
+      delBtn.style.flex = '0 0 auto';
+      delBtn.style.background = 'transparent';
+      delBtn.style.border = 'none';
+      delBtn.style.cursor = 'pointer';
+      delBtn.style.padding = '2px 6px';
+      delBtn.style.lineHeight = '1';
+    }
+
+    triggerCard.addEventListener('click', (e) => {
+      if (e?.target?.closest?.('.delete-btn')) return;
+      selectedItem = trigger;
+      document.getElementById('laneProperties').style.display = 'none';
+      document.getElementById('triggerProperties').style.display = 'block';
+      updateUI();
+      redrawAll();
     });
+
+    // ✅ 删除：传 index（不是 trigger.id）
+    delBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteTrigger(index);
+    });
+
+    triggersList.appendChild(triggerCard);
+  });
 }
+
 
 // 更新属性面板
 function updatePropertiesPanel() {
@@ -1007,26 +1054,46 @@ function editLane(index) {
 }
 
 
-// 删除车道
 function deleteLane(index) {
-    if (index >= 0 && index < lanes.length) {
-        if (confirm('确定要删除这条车道吗？')) {
-            lanes.splice(index, 1);
-            
-            // 如果删除的是当前选中的车道，清除选中状态
-            if (selectedItem && selectedItem.type === 'lane' && selectedItem === lanes[index]) {
-                selectedItem = null;
-            }
-            
-            redrawAll();
-            updateUI();
-            updateConfigDisplay({ lanes: lanes, triggers: triggers });
-            console.log('删除车道成功');
-        }
-    } else {
-        console.warn('无效的车道索引:', index);
-    }
+  if (index < 0 || index >= lanes.length) {
+    console.warn('无效的车道索引:', index);
+    return;
+  }
+  const removed = lanes[index];
+  if (!confirm('确定要删除这条车道吗？')) return;
+
+  lanes.splice(index, 1);
+
+  if (selectedItem === removed) selectedItem = null;
+  if (currentLane && currentLane.id === removed.id) currentLane = null;
+
+  redrawAll();
+  updateUI();
+  if (typeof updateConfigDisplay === 'function') {
+    updateConfigDisplay({ lanes, triggers });
+  }
 }
+
+function deleteTrigger(index) {
+  if (index < 0 || index >= triggers.length) {
+    console.warn('无效的触发线索引:', index);
+    return;
+  }
+  const removed = triggers[index];
+  if (!confirm('确定要删除这条触发线吗？')) return;
+
+  triggers.splice(index, 1);
+
+  if (selectedItem === removed) selectedItem = null;
+  if (currentTrigger && currentTrigger.id === removed.id) currentTrigger = null;
+
+  redrawAll();
+  updateUI();
+  if (typeof updateConfigDisplay === 'function') {
+    updateConfigDisplay({ lanes, triggers });
+  }
+}
+
 
 // 编辑触发线
 function editTrigger(index) {
@@ -1034,28 +1101,6 @@ function editTrigger(index) {
         selectedItem = triggers[index];
         updateUI();
         console.log('编辑触发线:', selectedItem);
-    } else {
-        console.warn('无效的触发线索引:', index);
-    }
-}
-
-
-// 删除触发线
-function deleteTrigger(index) {
-    if (index >= 0 && index < triggers.length) {
-        if (confirm('确定要删除这条触发线吗？')) {
-            triggers.splice(index, 1);
-            
-            // 如果删除的是当前选中的触发线，清除选中状态
-            if (selectedItem && selectedItem.type === 'trigger' && selectedItem === triggers[index]) {
-                selectedItem = null;
-            }
-            
-            redrawAll();
-            updateUI();
-            updateConfigDisplay({ lanes: lanes, triggers: triggers });
-            console.log('删除触发线成功');
-        }
     } else {
         console.warn('无效的触发线索引:', index);
     }
@@ -1555,113 +1600,137 @@ function displayToActual(displayX, displayY) {
 
 // 绘图事件处理函数
 function startDrawing(e) {
-    e.preventDefault();
-    
+    // 仅处理鼠标左键（右键用于完成绘制）
+    if (e && typeof e.button === 'number' && e.button !== 0) return;
+    e && e.preventDefault();
+
     // 获取鼠标在画布上的坐标
     const rect = drawCanvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
+
     // 将显示坐标转换为实际坐标
     const actualPoint = displayToActual(x, y);
-    
+
+    // 点击式绘制：每次左键点击追加一个“固定点”，同时维持一个“预览点”（最后一个点随鼠标移动）
+    // 若当前已有正在绘制的对象，则优先向该对象追加点，不受 currentTool 影响
+    if (currentLane) {
+        const lastIdx = currentLane.points.length - 1;
+        currentLane.points[lastIdx] = actualPoint; // 固化预览点
+        currentLane.points.push({ ...actualPoint }); // 追加新的预览点
+        selectedItem = currentLane;
+        redrawAll();
+        updateUI();
+        return;
+    }
+    if (currentTrigger) {
+        const lastIdx = currentTrigger.points.length - 1;
+        currentTrigger.points[lastIdx] = actualPoint; // 固化预览点
+        currentTrigger.points.push({ ...actualPoint }); // 追加新的预览点
+        selectedItem = currentTrigger;
+        redrawAll();
+        updateUI();
+        return;
+    }
+
+    // 未在绘制：根据当前工具开始新绘制
     if (currentTool === 'lane') {
-        // 开始绘制车道
+        // 开始绘制车道：第一个点 + 预览点（与第一个点重合，随后mousemove更新）
+        const laneWidth = parseInt(document.getElementById('laneWidth')?.value || '3', 10);
+        const laneColor = document.getElementById('laneColor')?.value || '#4285F4';
+
         currentLane = {
             id: Date.now(),
             type: 'lane',
             number: lanes.length + 1,
             name: `车道${lanes.length + 1}`,
-            color: '#4285F4',
-            width: 3,
-            points: [actualPoint]
+            color: laneColor,
+            width: Number.isFinite(laneWidth) ? laneWidth : 3,
+            points: [actualPoint, { ...actualPoint }] // 最后一个点为预览点
         };
         lanes.push(currentLane);
         selectedItem = currentLane;
     } else if (currentTool === 'trigger') {
-        // 开始绘制触发线
+        const triggerWidth = parseInt(document.getElementById('triggerWidth')?.value || '2', 10);
+        const triggerColor = document.getElementById('triggerColor')?.value || '#FF6D00';
+        const triggerName = document.getElementById('triggerName')?.value || `触发线${triggers.length + 1}`;
+
         currentTrigger = {
             id: Date.now(),
             type: 'trigger',
-            name: `触发线${triggers.length + 1}`,
-            color: '#FF6D00',
-            width: 2,
-            points: [actualPoint]
+            name: triggerName,
+            color: triggerColor,
+            width: Number.isFinite(triggerWidth) ? triggerWidth : 2,
+            points: [actualPoint, { ...actualPoint }] // 最后一个点为预览点
         };
         triggers.push(currentTrigger);
         selectedItem = currentTrigger;
     }
-    
-    // 绑定移动和抬起事件
-    drawCanvas.addEventListener('mousemove', draw);
-    drawCanvas.addEventListener('mouseup', stopDrawing);
-    drawCanvas.addEventListener('dblclick', completeDrawing);
-    
+
     redrawAll();
     updateUI();
 }
 
 function draw(e) {
-    e.preventDefault();
-    
+    e && e.preventDefault();
+
     if (!currentLane && !currentTrigger) return;
-    
+
     // 获取鼠标在画布上的坐标
     const rect = drawCanvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
+
     // 将显示坐标转换为实际坐标
     const actualPoint = displayToActual(x, y);
-    
-    // 更新当前绘制对象的最后一个点
-    if (currentLane) {
-        if (currentLane.points.length === 1) {
-            // 添加第二个点
-            currentLane.points.push(actualPoint);
-        } else {
-            // 更新最后一个点
-            currentLane.points[currentLane.points.length - 1] = actualPoint;
-        }
-    } else if (currentTrigger) {
-        if (currentTrigger.points.length === 1) {
-            // 添加第二个点
-            currentTrigger.points.push(actualPoint);
-        } else {
-            // 更新最后一个点
-            currentTrigger.points[currentTrigger.points.length - 1] = actualPoint;
-        }
+
+    // 更新“预览点”（最后一个点）
+    if (currentLane && currentLane.points.length >= 1) {
+        currentLane.points[currentLane.points.length - 1] = actualPoint;
+    } else if (currentTrigger && currentTrigger.points.length >= 1) {
+        currentTrigger.points[currentTrigger.points.length - 1] = actualPoint;
     }
-    
+
     redrawAll();
 }
 
 
 function stopDrawing(e) {
-    e.preventDefault();
-    
-    // 移除事件监听器
-    drawCanvas.removeEventListener('mousemove', draw);
-    drawCanvas.removeEventListener('mouseup', stopDrawing);
-    
+    // 兼容旧逻辑：现在采用点击式绘制，不再依赖 mouseup 停止
+    e && e.preventDefault();
     redrawAll();
 }
 
 function completeDrawing(e) {
-    e.preventDefault();
-    
-    // 移除事件监听器
-    drawCanvas.removeEventListener('mousemove', draw);
-    drawCanvas.removeEventListener('mouseup', stopDrawing);
-    drawCanvas.removeEventListener('dblclick', completeDrawing);
-    
-    // 完成当前绘制
+    // 右键（contextmenu）/双击完成绘制
+    e && e.preventDefault();
+
+    // 完成车道：移除预览点；不足2个点则丢弃
     if (currentLane) {
+        if (currentLane.points.length >= 2) {
+            currentLane.points.pop(); // 移除预览点
+        }
+        if (currentLane.points.length < 2) {
+            const idx = lanes.findIndex(x => x && x.id === currentLane.id);
+            if (idx >= 0) lanes.splice(idx, 1);
+            if (selectedItem && selectedItem.id === currentLane.id) selectedItem = null;
+        }
         currentLane = null;
-    } else if (currentTrigger) {
+    }
+
+    // 完成触发线：移除预览点；不足2个点则丢弃
+    if (currentTrigger) {
+        if (currentTrigger.points.length >= 2) {
+            currentTrigger.points.pop(); // 移除预览点
+        }
+        if (currentTrigger.points.length < 2) {
+            const idx = triggers.findIndex(x => x && x.id === currentTrigger.id);
+            if (idx >= 0) triggers.splice(idx, 1);
+            if (selectedItem && selectedItem.id === currentTrigger.id) selectedItem = null;
+        }
         currentTrigger = null;
     }
-    
+
     redrawAll();
     updateUI();
 }
@@ -1766,24 +1835,60 @@ function initializeCanvasEventListeners() {
     // 获取Canvas元素
     drawCanvas = document.getElementById('drawCanvas');
     overlayCanvas = document.getElementById('overlayCanvas');
-    
-    if (drawCanvas && overlayCanvas) {
-        // 获取2D上下文
-        ctx = drawCanvas.getContext('2d');
-        overlayCtx = overlayCanvas.getContext('2d');
-        
-        // 绑定鼠标事件
-        drawCanvas.addEventListener('mousedown', function(e) {
-            // 先检查是否点击了控制点
-            if (!checkControlPointClick(e)) {
-                // 再检查是否点击了线段
-                if (!checkLineClick(e)) {
-                    // 最后开始新的绘制
-                    startDrawing(e);
-                }
-            }
-        });
+
+    if (!drawCanvas || !overlayCanvas) {
+        console.warn('Canvas元素未找到，无法绑定事件');
+        return;
     }
+
+    // 获取2D上下文
+    ctx = drawCanvas.getContext('2d');
+    overlayCtx = overlayCanvas.getContext('2d');
+
+    // 防止重复绑定（initApp 可能被多次调用）
+    if (drawCanvas.dataset && drawCanvas.dataset.eventsBound === '1') {
+        return;
+    }
+    if (drawCanvas.dataset) drawCanvas.dataset.eventsBound = '1';
+
+    // 鼠标移动：更新预览点
+    drawCanvas.addEventListener('mousemove', draw);
+
+    // 右键完成绘制（阻止系统右键菜单）
+    drawCanvas.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        // 仅在正在绘制时响应
+        if (currentLane || currentTrigger) {
+            completeDrawing(e);
+        }
+        return false;
+    });
+
+    // 左键点击：优先做选择；若在绘制中则追加点；否则开始新绘制
+    drawCanvas.addEventListener('mousedown', function(e) {
+        // 右键由 contextmenu 处理，这里直接忽略
+        if (e && typeof e.button === 'number' && e.button === 2) return;
+
+        // 如果正在绘制：任何左键点击都追加一个点
+        if (currentLane || currentTrigger) {
+            startDrawing(e);
+            return;
+        }
+
+        // 未在绘制：先尝试选择控制点/线段，选择失败再开始新绘制
+        if (!checkControlPointClick(e)) {
+            if (!checkLineClick(e)) {
+                startDrawing(e);
+            }
+        }
+    });
+
+    // 双击也允许完成（可选）
+    drawCanvas.addEventListener('dblclick', function(e) {
+        if (currentLane || currentTrigger) {
+            completeDrawing(e);
+        }
+    });
 }
 
 // 在initApp函数中调用初始化
