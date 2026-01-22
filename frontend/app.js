@@ -32,22 +32,6 @@ const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 // 定期更新统计数据
 let statsUpdateInterval = null;
 
-// 初始化
-window.addEventListener('load', () => {
-  initializeCanvas();
-
-  try {
-    initializeEventListeners(); // 即使这里有问题，也不影响定时器启动
-  } catch (e) {
-    console.error('[initializeEventListeners] crashed:', e);
-  }
-
-  updateUI();
-
-  // 开始定期更新统计数据
-  startStatsUpdate();
-});
-
 
 // 初始化画布
 function initializeCanvas() {
@@ -1317,6 +1301,7 @@ if (document.readyState === 'loading') {
     initApp();
 }
 
+
 // 更新统计数据
 async function updateStats() {
   const statsContainer = document.getElementById('statsContainer');
@@ -1770,6 +1755,18 @@ function initializeCanvasEventListeners() {
 
 // 在initApp函数中调用初始化
 function initApp() {
+    initializeCanvas();
+
+    try {
+        initializeEventListeners(); // 即使这里有问题，也不影响定时器启动
+    } catch (e) {
+        console.error('[initializeEventListeners] crashed:', e);
+    }
+
+    updateUI();
+
+    // 开始定期更新统计数据
+    startStatsUpdate();
     // 延迟检查后端健康状态
     setTimeout(checkBackendHealth, 1000);
     

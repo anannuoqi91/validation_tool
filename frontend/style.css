@@ -92,19 +92,6 @@ body {
     position: relative;
 }
 
-/* 视频显示区 */
-.video-section {
-    background: white;
-    border-radius: 8px;
-    padding: 0.1rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 300px;
-    overflow: hidden;
-}
-
 /* 视频容器 */
 .video-container {
     position: relative;
@@ -303,17 +290,6 @@ body {
     gap: 0.5rem;
     overflow-y: auto;
     min-height: 500px;
-}
-
-/* 视频显示区 */
-.video-section {
-    background: white;
-    border-radius: 8px;
-    padding: 1rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    flex: 1;
-    display: flex;
-    flex-direction: column;
 }
 
 /* 统计数据显示区 */
