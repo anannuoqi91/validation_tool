@@ -327,59 +327,6 @@ function drawTrigger(trigger) {
     }
 }
 
-// 绘制触发线
-function drawTrigger(trigger) {
-    // 即使只有一个点也显示
-    if (trigger.points.length >= 1) {
-        // 如果触发线被选中，使用红色绘制
-        const color = (selectedItem === trigger) ? '#ff0000' : trigger.color;
-        
-        // 绘制线条
-        if (trigger.points.length >= 2) {
-            ctx.strokeStyle = color;
-            ctx.lineWidth = trigger.width;
-            ctx.setLineDash([10, 5]); // 虚线样式
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.beginPath();
-            
-            trigger.points.forEach((point, index) => {
-                // 将实际坐标转换为显示坐标
-                const displayPoint = actualToDisplay(point.x, point.y);
-                if (index === 0) {
-                    ctx.moveTo(displayPoint.x, displayPoint.y);
-                } else {
-                    ctx.lineTo(displayPoint.x, displayPoint.y);
-                }
-            });
-            
-            ctx.stroke();
-            ctx.setLineDash([]); // 重置为实线
-        }
-        
-        // 绘制触发线名称
-        if (trigger.points.length >= 2) {
-            const p1Display = actualToDisplay(trigger.points[0].x, trigger.points[0].y);
-            const p2Display = actualToDisplay(trigger.points[trigger.points.length - 1].x, trigger.points[trigger.points.length - 1].y);
-            const midPoint = getMidPoint(p1Display, p2Display);
-            overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            const textWidth = overlayCtx.measureText(trigger.name).width;
-            overlayCtx.fillRect(midPoint.x - textWidth/2 - 5, midPoint.y - 15, textWidth + 10, 30);
-            overlayCtx.fillStyle = '#ffffff';
-            overlayCtx.font = 'bold 14px Arial';
-            overlayCtx.textAlign = 'center';
-            overlayCtx.textBaseline = 'middle';
-            overlayCtx.fillText(trigger.name, midPoint.x, midPoint.y);
-        }
-        
-        // 绘制控制点，选中项使用红色控制点
-        trigger.points.forEach(point => {
-            const displayPoint = actualToDisplay(point.x, point.y);
-            drawControlPoint(displayPoint, color);
-        });
-    }
-}
-
 // 绘制选中状态
 function drawSelection(item) {
     if (item.points.length < 2) return;
