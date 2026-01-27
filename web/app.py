@@ -6,6 +6,7 @@ import json
 import logging
 import tempfile
 import queue
+import time
 import threading
 from flask import Flask, request, jsonify, send_from_directory, Response
 import cv2
@@ -17,6 +18,7 @@ try:
     from trigger import Trigger
     from tracker import Tracker
     from data_adapter import DataAdapter, ImageData, EventData
+    from pointcloud_adapter import PointCloudAdapter
 except Exception as e:
     raise ImportError(
         f"Failed to import required modules. Please check your installation.\n {e}")
@@ -37,6 +39,21 @@ app.config['UPLOAD_FOLDER'] = os.path.join(
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB
 
 # CORS支持 - 添加响应头
+
+
+@app.after_request
+def set_csp_header(response):
+    csp_policy = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: blob:; "
+        "connect-src 'self' http://localhost:5000 ws: wss:; "
+        "media-src 'self' blob:;"
+    )
+    response.headers['Content-Security-Policy'] = csp_policy
+    return response
 
 
 @app.after_request
@@ -64,6 +81,7 @@ current_data_adapter = None
 current_tracker = None
 current_trigger = None
 current_matcher = None
+current_pointcloud_adapter = None
 save_results = SaveResults()
 
 # 统计数据映射
@@ -108,6 +126,37 @@ def generate_frames_from_adapter():
                 frame = buffer.tobytes()
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+
+def generate_points_from_adapter():
+    global current_pointcloud_adapter
+    """从DataAdapter生成点云，转换为图片流"""
+    while True:
+        if current_pointcloud_adapter is None:
+            time.sleep(0.1)
+            continue
+
+        # 等待新点云到达
+        if current_pointcloud_adapter.pointcloud_condition():
+            # 获取合并后的点云numpy数组
+            image = current_pointcloud_adapter.get_pointclouds_png()
+
+            if image is not None:
+                # 编码为JPEG
+                frame_bytes = current_pointcloud_adapter.encode_image_to_jpeg(
+                    image, quality=80)
+
+                if frame_bytes is not None:
+                    # 发送图片帧
+                    yield (
+                        b'--frame\r\n'
+                        b'Content-Type: image/jpeg\r\n\r\n' +
+                        frame_bytes +
+                        b'\r\n'
+                    )
+        else:
+            time.sleep(0.01)  # 无数据时短暂休眠
+
 
 # 图像回调函数
 
@@ -209,6 +258,7 @@ def connect():
     global current_tracker
     global current_trigger
     global current_matcher
+    global current_pointcloud_adapter
 
     try:
         data = request.get_json()
@@ -252,8 +302,15 @@ def connect():
         current_data_adapter.set_image_callback(image_callback)
         current_data_adapter.set_event_callback(event_callback)
         current_data_adapter.set_online_mode(
-            rtsp_url, cyber_event_channel, cyber_pointcloud_channel)
+            rtsp_url, cyber_event_channel, None)
         current_data_adapter.run()
+
+        if current_pointcloud_adapter:
+            current_pointcloud_adapter.stop()
+        else:
+            current_pointcloud_adapter = PointCloudAdapter()
+        current_pointcloud_adapter.set_online_mode(cyber_pointcloud_channel)
+        current_pointcloud_adapter.run()
 
         logger.info(f"Connected to RTSP stream: {rtsp_url}")
         return jsonify({"success": True, "stream_url": "/video_feed"})
@@ -328,6 +385,13 @@ def video_feed():
     """视频流输出"""
     return Response(generate_frames_from_adapter(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+@app.route('/points')
+def pointcloud_feed():
+    return Response(generate_points_from_adapter(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
 
 # 配置相关路由
 

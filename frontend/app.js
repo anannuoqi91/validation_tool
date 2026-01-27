@@ -29,6 +29,8 @@ const API_BASE_URL = 'http://localhost:5000/api';
 // 后端根地址（用于 /video_feed 等非 /api 路由）
 const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, ''); 
 
+window.BACKEND_ORIGIN = BACKEND_ORIGIN;
+
 // 定期更新统计数据
 let statsUpdateInterval = null;
 
@@ -67,26 +69,11 @@ function resizeCanvas() {
 
 // 初始化事件监听器
 function initializeEventListeners() {
-    // 视频控制
-    document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
-    
     // 数据源设置
     document.getElementById('onlineTab').addEventListener('click', () => switchTab('online'));
     document.getElementById('recordTab').addEventListener('click', () => switchTab('record'));
     document.querySelector('#onlineTab .primary-btn')?.addEventListener('click', connect);
     document.querySelector('#recordTab .primary-btn')?.addEventListener('click', loadRecord);
-
-    
-    // 绘制工具
-    document.getElementById('laneBtn').addEventListener('click', () => setTool('lane'));
-    document.getElementById('triggerBtn').addEventListener('click', () => setTool('trigger'));
-    document.getElementById('clearBtn').addEventListener('click', clearAll);
-    
-    // 画布事件（统一在 initializeCanvasEventListeners() 中绑定，避免重复监听）
-    // 数据管理
-    document.getElementById('saveBtn').addEventListener('click', saveConfig);
-    document.getElementById('loadBtn').addEventListener('click', loadConfig);
-    document.getElementById('exportBtn').addEventListener('click', exportData);
     
     // 属性设置
     document.getElementById('laneNumber').addEventListener('input', updateLaneProperties);
@@ -626,12 +613,17 @@ async function connect() {
                 cyber_pointcloud_channel: cyberPointcloudChannel
             })
         });
-
         const data = await response.json();
         
         if (data.success) {
             isConnected = true;
             startVideoStream();
+
+            // 启动点云图片流
+            if(cyberPointcloudChannel && cyberPointcloudChannel.trim() !== ''){
+                startPointCloudImageStream();
+                showNotification('点云流已启动', 'success');
+            }
 
             try {
                 updateConnectionStatus(true, 'RTSP 已建立');
@@ -639,7 +631,6 @@ async function connect() {
                 console.error('连接成功，但 UI 更新失败:', uiErr);
                 showNotification('连接成功，但界面更新失败（不影响连接）', 'warning');
             }
-
             showNotification('连接成功！', 'success');
         } else {
             try {
@@ -726,8 +717,6 @@ function startVideoStream() {
     showNotification('视频流加载完成', 'success');
   };
 
-  // ✅ 关键：指向后端 5000，而不是前端域名
-  // 适用于常见的 MJPEG /video_feed（img标签）或其它后端实现
   const url = `${BACKEND_ORIGIN}/video_feed?ts=${Date.now()}`;
   console.log('[startVideoStream] video url =', url);
 
@@ -1255,23 +1244,44 @@ function getVideoAspectRatio(videoPlayer) {
     return 0; // 返回0表示使用默认比例
 }
 
-// 在全局暴露点云重置函数
-window.pointcloudResize = function() {
-    if (window.onWindowResize) {
-        window.onWindowResize();
+// 启动点云图片流
+function startPointCloudImageStream() {
+    const pointcloudImage = document.getElementById('pointcloudImage');
+    const pointcloudLoading = document.getElementById('pointcloudLoading');
+    if (!pointcloudImage) {
+        console.warn('[pointcloud] #pointcloudImage not found');
+        return;
     }
-};
+
+    // 显示“等待点云数据...”
+    if (pointcloudLoading) {
+        pointcloudLoading.style.display = 'block';
+    }
+
+    const url = `${BACKEND_ORIGIN}/points?ts=${Date.now()}`;
+    console.log('[pointcloud] img src =', url);
+
+    // 新图加载出来就隐藏 loading
+    pointcloudImage.onload = function () {
+        if (pointcloudLoading) {
+            pointcloudLoading.style.display = 'none';
+        }
+    };
+
+    pointcloudImage.onerror = function (e) {
+        console.error('[pointcloud] image error:', e);
+        if (pointcloudLoading) {
+            pointcloudLoading.style.display = 'none';
+        }
+    };
+
+    // ★ 关键：直接让 <img> 播 MJPEG 流，浏览器自己处理 boundary
+    pointcloudImage.src = url;
+}
 
 // 修改resize监听器
 window.addEventListener('resize', function() {
     adjustVideoSize(); // 调整视频尺寸
-    
-    // 同时调整点云容器尺寸
-    setTimeout(() => {
-        if (window.pointcloudResize) {
-            window.pointcloudResize();
-        }
-    }, 100);
 });
 
 
@@ -1895,4 +1905,3 @@ function getVideoDisplayRect() {
         scaleY: scaleY
     };
 }
-

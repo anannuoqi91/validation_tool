@@ -51,7 +51,7 @@
                             <div class="form-group">
                                 <label for="cyberPointcloudChannel">Cyber Pointcloud Channel:</label>
                                 <input type="text" id="cyberPointcloudChannel" placeholder="输入Cyber Pointcloud Channel"
-                                    class="text-input">
+                                    value="omnisense/preprocess/01/parallel_up_dynamic_points" class="text-input">
                             </div>
                         </div>
                         <button class="primary-btn">连接</button>
@@ -147,14 +147,14 @@
             </div>
         </div>
 
-        <!-- 中间：三维点云显示区 -->
+        <!-- 中间：点云显示区（图片流） -->
         <div class="pointcloud-section">
-            <h3>SIMPL</h3>
-            <div id="pointcloudContainer" class="pointcloud-container"></div>
-            <div class="pointcloud-controls">
-                <button onclick="resetCamera()">重置视角</button>
-                <button onclick="toggleAutoRotate()" id="autoRotateBtn">自动旋转</button>
-                <button onclick="loadSamplePointCloud()">加载示例点云</button>
+            <h3>SIMPL - 点云鸟瞰图</h3>
+            <div class="pointcloud-container">
+                <img id="pointcloudImage" src="" alt="点云鸟瞰图" style="width: 100%; height: auto; display: block;">
+                <div id="pointcloudLoading" class="video-loading" style="display: none;">
+                    等待点云数据...
+                </div>
             </div>
         </div>
 
@@ -187,12 +187,7 @@
         </div>
     </div>
 
-    <!-- 引入 Three.js CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- 引入应用脚本 -->
     <script src="app.js"></script>
-    <!-- 引入点云可视化脚本 -->
-    <script src="pointcloud.js"></script>
 </body>
 
 </html>
