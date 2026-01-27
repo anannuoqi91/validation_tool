@@ -11,94 +11,27 @@ Features:
 """
 
 import queue
-import logging
-import sys
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import Optional, Tuple, Callable
 import time
 import threading
 import numpy as np
 import cv2
-import os
-# Set this before importing protobuf-dependent modules to handle version incompatibility
-os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
-
-# Set up logging
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-# Add specified path to sys.path
-sys.path.append('/apollo/cyber/lib/python3.8/site-packages/cyber/python')
-# Add local proto directory to sys.path to import protobuf modules
-sys.path.append(os.path.join(os.path.dirname(__file__), 'proto'))
-
+from backend.utils.log_util import logger
+from backend.scripts.record_source import RecordSource
+from backend.scripts.simpl_data_process import handle_event_region_attr
 try:
     from cyber_record.record import Record
     from cyber_py3 import cyber
-    from proto.inno_event_pb2 import BaseEvents, VolumeFunc, TRIGGER
+    from proto.inno_event_pb2 import BaseEvents, TRIGGER
     from proto.region_pb2 import EventRegionAttribute
-    from proto.camera_pb2 import DataFormat
     from proto.drivers_pb2 import PointCloud2
+    from backend.modules.common_modules import BoxData
+    from backend.modules.camera_modules import ImageData
+    from backend.modules.simpl_modules import EventData
 except ImportError as e:
     logger.error(f"Failed to import cyber module: {e}")
     logger.info("Running in limited mode without cyber support")
-
-
-def handle_event_region_attr(event_region_attr):
-    def parse_event(serialized_msg, event_class):
-        event = event_class()
-        event.ParseFromString(serialized_msg)
-        return event
-
-    def volume_func(serialized_msg):
-        return parse_event(serialized_msg, VolumeFunc)
-
-    switcher = {
-        EventRegionAttribute.FLOW_EVENT: volume_func,
-    }
-
-    handle = switcher.get(event_region_attr, None)
-    return handle
-
-
-@dataclass
-class BoxData:
-    """Container for box data (simplified version)"""
-    position_x: float  # unit: meter
-    position_y: float  # unit: meter
-    position_z: float  # unit: meter
-    length: float      # unit: meter
-    width: float       # unit: meter
-    height: float      # unit: meter
-    object_type: int
-    track_id: int
-    lane_id: int
-
-
-@dataclass
-class ImageData:
-    """Container for image data"""
-    timestamp_ms: int  # in milliseconds
-    timestamp_ms_local: int
-    image: np.ndarray
-    width: int
-    height: int
-    channels: int
-    region_name: Optional[str] = None
-    box: Optional[BoxData] = None
-
-
-@dataclass
-class EventData:
-    """Container for event data"""
-    timestamp_ms: int
-    timestamp_ms_local: int
-    region_name: str
-    region_id: int
-    box: BoxData
-    pointcloud: Optional[PointCloud2] = None
 
 
 class CameraSource(ABC):
@@ -352,153 +285,6 @@ class ChannelEventSource(EventSource):
 
     def _cvt_pointcloud_to_image(self, pointcloud: PointCloud2) -> np.ndarray:
         """Convert PointCloud2 message to numpy array"""
-
-
-class RecordSource:
-    """Unified source for reading both camera frames and events from Apollo Cyber record files"""
-
-    def __init__(self, record_path: str, camera_channel: str = None,
-                 event_channel: str = None, event_type: int = EventRegionAttribute.FLOW_EVENT, fps: int = None):
-        self.record_path = record_path
-        self.camera_channel = camera_channel
-        self.camera_call_back = None
-        self.event_channel = event_channel
-        self.event_type = event_type
-        self.event_call_back = None
-        self.is_running = False
-        self.fps = fps
-        self.frame_interval = 1.0 / fps if fps is not None else 0  # seconds per frame
-
-        # Initialize record reader
-        try:
-            self.record_reader = Record(open(record_path, 'rb'))
-        except Exception as e:
-            logger.error(f"Failed to initialize record reader: {e}")
-            raise
-
-        # Message types
-        self.camera_msg_type = "omnividi.camera.CameraFrame"
-        self.event_msg_type = "omnividi.event.BaseEvents"
-
-    def set_camera_call_back(self, camera_call_back: Callable[[ImageData], None]):
-        self.camera_call_back = camera_call_back
-
-    def set_event_call_back(self, event_call_back: Callable[[EventData], None]):
-        self.event_call_back = event_call_back
-
-    def _parse_messages(self):
-        """Parse all messages from the record file"""
-        # for channel_name, msg, datatype, timestamp in self.record_reader.read_messages():
-        last_frame_time = time.time()  # Track time of last processed frame
-
-        for channel_name, message, timestamp in self.record_reader.read_messages():
-            # Check if we should stop processing
-            if not self.is_running:
-                break
-
-            if not hasattr(message, 'DESCRIPTOR'):
-                logger.error(f"Message {channel_name} has no DESCRIPTOR")
-                continue
-
-            if self.camera_channel == channel_name or \
-                    self.camera_channel is None and message.DESCRIPTOR.full_name == self.camera_msg_type:
-                camera_frame = message
-
-                image_data = ImageData(
-                    timestamp_ms=camera_frame.timestamp_ns / 1000000,
-                    timestamp_ms_local=int(time.time() * 1e3),
-                    width=None,
-                    height=None,
-                    channels=None,
-                    image=None
-                )
-
-                if camera_frame.data_format == DataFormat.OPENCV:
-                    image_data.width = camera_frame.cols
-                    image_data.height = camera_frame.rows
-                    image_data.channels = camera_frame.channels
-                    image_data.image = np.frombuffer(
-                        camera_frame.data, dtype=np.uint8)
-                    image_data.image = image_data.image.reshape(
-                        (camera_frame.rows, camera_frame.cols, camera_frame.channels))
-                else:
-                    logger.error(
-                        f"Unsupported data format: {camera_frame.data_format}")
-
-                # Call callback if provided
-                if self.camera_call_back:
-                    self.camera_call_back(image_data)
-
-                    # Control frame rate if fps is set
-                    if self.fps is not None:
-                        current_time = time.time()
-                        elapsed_time = current_time - last_frame_time
-                        if elapsed_time < self.frame_interval:
-                            time.sleep(self.frame_interval - elapsed_time)
-                        last_frame_time = current_time
-                else:
-                    logger.error(f"Camera callback not set!")
-
-            elif self.event_channel == channel_name or \
-                    self.event_channel is None and message.DESCRIPTOR.full_name == self.event_msg_type:
-                base_events = message
-                # base_events.ParseFromString(msg)
-
-                for base_event in base_events.base_events:
-                    if base_event.event_region_attr != self.event_type:
-                        continue
-                    handle = handle_event_region_attr(
-                        base_event.event_region_attr)
-                    event = handle(base_event.serialized_msg)
-
-                    # entry point
-                    if event.common_event.status != TRIGGER:
-                        continue
-
-                    # Create EventData object
-                    event_data = EventData(
-                        timestamp_ms=event.common_event.timestamp_ms,
-                        timestamp_ms_local=int(time.time() * 1e3),
-                        region_name=event.common_event.region_name,
-                        region_id=event.common_event.region_id,
-                        box=None
-                    )
-
-                    if len(event.common_event.boxes) > 0:
-                        event_data.box = BoxData(
-                            position_x=event.common_event.boxes[0].x,
-                            position_y=event.common_event.boxes[0].y,
-                            position_z=event.common_event.boxes[0].z,
-                            length=event.common_event.boxes[0].length,
-                            width=event.common_event.boxes[0].width,
-                            height=event.common_event.boxes[0].height,
-                            object_type=event.common_event.boxes[0].object_type,
-                            track_id=event.common_event.boxes[0].track_id
-                        )
-                    else:
-                        logger.error(
-                            f"Event {event.common_event.event_id} has no boxes")
-
-                    # Call callback if provided
-                    if self.event_call_back:
-                        self.event_call_back(event_data)
-                    else:
-                        logger.error(f"Event callback not set!")
-
-    def run(self):
-        """Start parsing messages"""
-        self.is_running = True
-        self._parse_messages()
-        self.is_running = False
-
-    def stop(self):
-        """Stop parsing messages"""
-        self.is_running = False
-
-    def release(self):
-        """Release resources"""
-        # Stop parsing if still running
-        self.stop()
 
 
 class DataAdapter:

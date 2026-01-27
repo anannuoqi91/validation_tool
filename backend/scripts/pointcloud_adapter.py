@@ -1,4 +1,3 @@
-from typing import Optional, Tuple
 import queue
 import os
 import sys
@@ -7,18 +6,7 @@ import threading
 import time
 import numpy as np
 import cv2
-
-os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
-
-# Set up logging
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-# Add specified path to sys.path
-sys.path.append('/apollo/cyber/lib/python3.8/site-packages/cyber/python')
-# Add local proto directory to sys.path to import protobuf modules
-sys.path.append(os.path.join(os.path.dirname(__file__), 'proto'))
+from backend.utils.log_util import logger
 
 try:
     from cyber_py3 import cyber

@@ -8,29 +8,26 @@ import tempfile
 import queue
 import time
 import threading
-from flask import Flask, request, jsonify, send_from_directory, Response
+from flask import Flask, request, jsonify, Response
 import cv2
 import numpy as np
 from datetime import datetime
+import settings
+from backend.utils.log_util import logger
+from backend.utils.tool_for_record import get_info_with_return
+from backend.scripts.record_source import RecordSource
 try:
     from save_results import SaveResults
     from matcher import Matcher
     from trigger import Trigger
     from tracker import Tracker
-    from data_adapter import DataAdapter, ImageData, EventData
-    from pointcloud_adapter import PointCloudAdapter
+    from backend.scripts.data_adapter import DataAdapter
+    from backend.modules.camera_modules import ImageData
+    from backend.modules.simpl_modules import EventData
+    from backend.scripts.pointcloud_adapter import PointCloudAdapter
 except Exception as e:
     raise ImportError(
         f"Failed to import required modules. Please check your installation.\n {e}")
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-
-# 配置日志
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    handlers=[logging.StreamHandler()])
-logger = logging.getLogger(__name__)
 
 # 创建Flask应用
 app = Flask(__name__, static_folder=None)  # 禁用默认静态文件服务
@@ -324,6 +321,36 @@ def connect():
 
 @app.route('/api/record/load', methods=['POST'])
 def load_record():
+    """加载Record文件"""
+    global current_data_adapter
+    global current_trigger
+    global current_matcher
+    global current_tracker
+
+    try:
+        # 检查是否有文件上传
+        if 'record_file' not in request.files:
+            return jsonify({"success": False, "message": "未选择文件"})
+
+        file = request.files['record_file']
+        if file.filename == '':
+            return jsonify({"success": False, "message": "未选择文件"})
+
+        # 保存文件到临时目录
+        temp_file_path = os.path.join(tempfile.gettempdir(), file.filename)
+        file.save(temp_file_path)
+        record_info = get_info_with_return(temp_file_path)
+        channel_match = RecordSource.channel_match(record_info['channels'])
+
+        return jsonify({"success": True, "detail": channel_match.to_json()})
+
+    except Exception as e:
+        logger.error(f"Record file processing error: {e}")
+        return jsonify({"success": False, "message": str(e)})
+
+
+@app.route('/api/record/playRecord', methods=['POST'])
+def play_record():
     """加载Record文件"""
     global current_data_adapter
     global current_trigger
