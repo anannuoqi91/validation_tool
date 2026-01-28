@@ -76,12 +76,10 @@ class RtspCameraSource(CameraSource):
         """Get the latest image data from the queue"""
         if self.image_queue.empty():
             return None
-
         # Get the latest image by clearing the queue except for the last frame
         latest_image = None
         while not self.image_queue.empty():
             latest_image = self.image_queue.get_nowait()
-
         return latest_image
 
     def release(self):

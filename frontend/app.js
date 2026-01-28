@@ -1978,6 +1978,9 @@ async function confirmChannelSelect() {
             if (data.success) { 
                 isConnected = true; 
                 startVideoStream(); 
+                if(cameraChannel && cameraChannel.trim() !== ''){
+                    startPointCloudImageStream();
+                }
                 updateConnectionStatus(true); 
                 closeChannelSelectModal(); 
                 showNotification('记录文件加载成功！', 'success'); 

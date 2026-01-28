@@ -397,11 +397,12 @@ def play_record():
 
         current_data_adapter.set_image_callback(image_callback)
         current_data_adapter.set_event_callback(event_callback)
-        current_data_adapter.set_offline_mode(temp_file_path, fps=10)
+        current_data_adapter.set_offline_mode(temp_file_path, fps=10,  camera_channel=request.form.get(
+            'camera_channel'), event_channel=request.form.get('event_channel'), box_channel=request.form.get('box_channel'), points_channel=request.form.get('points_channel'))
         current_data_adapter.run()
 
         logger.info(f"Processing record file: {temp_file_path}")
-        return jsonify({"success": True, "stream_url": "/video_feed"})
+        return jsonify({"success": True, "stream_url": "/video_feed", "pointcloud_url": "/points"})
 
     except Exception as e:
         logger.error(f"Record file processing error: {e}")

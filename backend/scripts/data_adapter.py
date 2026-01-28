@@ -120,12 +120,10 @@ class DataAdapter:
                 self._run_offline()
             else:
                 logger.error(f"Unknown mode: {self.mode}")
+                self.is_running = False
         except Exception as e:
             logger.error(f"Error in processing thread: {e}")
-        finally:
-            # Ensure running flag is reset even if an error occurs
             self.is_running = False
-            logger.info(f"Stopped {self.mode} mode processing thread")
 
     def _run_online(self):
         """Run in online mode - continuously process streaming data"""
@@ -139,6 +137,12 @@ class DataAdapter:
             # Continuously process data while running flag is true
             while self.is_running:
                 image_data, frame_data = self._get_online_data()
+
+                if image_data is None:
+                    continue
+                if self.image_callback is None:
+
+                    continue
 
                 # Call image callback if provided and data is available
                 if self.image_callback and image_data:

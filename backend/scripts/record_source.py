@@ -72,7 +72,9 @@ class RecordSource:
     def _parse_messages(self):
         """Parse all messages from the record file"""
         last_frame_time = time.time()  # Track time of last processed frame
+        print(self._channels)
         for channel_name, message, timestamp in self.record_reader.read_messages(self._channels):
+            print(f"channel_name: {channel_name}, timestamp: {timestamp}")
             # Check if we should stop processing
             if not self.is_running:
                 break
@@ -85,6 +87,7 @@ class RecordSource:
                 continue
             if support_bz == "camera" and \
                     (self.camera_channel == channel_name or self.camera_channel is None):
+                print(f"****************timestamp: {timestamp}")
                 image_data = handle_camera(message)
                 # Call callback if provided
                 if self.camera_call_back:
