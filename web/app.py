@@ -16,6 +16,9 @@ import settings
 from backend.utils.log_util import logger
 from backend.utils.tool_for_record import get_info_with_return
 from backend.scripts.record_source import RecordSource
+from backend.scripts.simpl_data_process import handle_pointscloud2_to_numpy
+from backend.utils.points_to_img import (
+    pointcloud_to_image, encode_image_to_jpeg)
 try:
     from save_results import SaveResults
     from matcher import Matcher
@@ -23,7 +26,7 @@ try:
     from tracker import Tracker
     from backend.scripts.data_adapter import DataAdapter
     from backend.modules.camera_modules import ImageData
-    from backend.modules.simpl_modules import EventData
+    from backend.modules.simpl_modules import *
     from backend.scripts.pointcloud_adapter import PointCloudAdapter
 except Exception as e:
     raise ImportError(
@@ -310,7 +313,7 @@ def connect():
         current_pointcloud_adapter.run()
 
         logger.info(f"Connected to RTSP stream: {rtsp_url}")
-        return jsonify({"success": True, "stream_url": "/video_feed"})
+        return jsonify({"success": True, "stream_url": "/video_feed", "pointcloud_url": "/points"})
 
     except Exception as e:
         logger.error(f"connection error: {e}")
@@ -342,7 +345,7 @@ def load_record():
         record_info = get_info_with_return(temp_file_path)
         channel_match = RecordSource.channel_match(record_info['channels'])
 
-        return jsonify({"success": True, "detail": channel_match.to_json()})
+        return jsonify({"success": True, "channels": channel_match})
 
     except Exception as e:
         logger.error(f"Record file processing error: {e}")

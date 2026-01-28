@@ -186,7 +186,35 @@
             </div>
         </div>
     </div>
-
+    <!-- Channel选择弹窗 -->
+    <div id="channelSelectModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>选择Channels</h3> <button class="modal-close" onclick="closeChannelSelectModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="channel-select-row"> <label for="cameraChannel">Camera:</label> <select id="cameraChannel"
+                        class="channel-select">
+                        <option value="">-- 选择 --</option>
+                    </select> </div>
+                <div class="channel-select-row"> <label for="eventChannel">Event:</label> <select id="eventChannel"
+                        class="channel-select">
+                        <option value="">-- 选择 --</option>
+                    </select> </div>
+                <div class="channel-select-row"> <label for="boxChannel">Box:</label> <select id="boxChannel"
+                        class="channel-select">
+                        <option value="">-- 选择 --</option>
+                    </select> </div>
+                <div class="channel-select-row"> <label for="pointsChannel">Points:</label> <select id="pointsChannel"
+                        class="channel-select">
+                        <option value="">-- 选择 --</option>
+                    </select> </div>
+            </div>
+            <div class="modal-footer"> <button class="modal-btn cancel" onclick="closeChannelSelectModal()">取消</button>
+                <button class="modal-btn confirm" onclick="confirmChannelSelect()">确定</button>
+            </div>
+        </div>
+    </div>
     <script src="app.js"></script>
 </body>
 

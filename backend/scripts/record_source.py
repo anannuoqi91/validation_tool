@@ -2,30 +2,19 @@ from typing import Callable
 import time
 import numpy as np
 from backend.utils.log_util import logger
-from backend.scripts.simpl_data_process import handle_event_region_attr
-from backend.modules.common_modules import BoxData
+from backend.scripts.simpl_data_process import (
+    handle_base_event, handle_camera)
+from backend.modules.simpl_modules import EventData, RECORD_MSG_TYPE
 
 try:
     from cyber_record.record import Record
     from cyber_py3 import cyber
-    from proto.inno_event_pb2 import TRIGGER
     from proto.region_pb2 import EventRegionAttribute
-    from proto.camera_pb2 import DataFormat
     from backend.modules.camera_modules import ImageData
-    from backend.modules.simpl_modules import EventData
+    from backend.modules.simpl_modules import EventData, RECORD_MSG_TYPE
 except ImportError as e:
     logger.error(f"Failed to import cyber module: {e}")
     logger.info("Running in limited mode without cyber support")
-
-
-RECORD_MSG_TYPE = {
-    "omnividi.event.BaseEvent": "event",
-    "omnividi.event.BaseEvents": "event",
-    "omnividi.box.Boxes": "box",
-    "omnividi.camera.CameraFrame": "camera",
-    "omnividi.trig_recorder.CompressedMsg": "points_compress",
-    "omnividi.drivers.PointCloud2": "points"
-}
 
 
 class RecordSource:
@@ -43,16 +32,12 @@ class RecordSource:
         self.event_call_back = None
         self.is_running = False
         self.fps = fps
-        self.frame_interval = 1.0 / fps if fps is not None else 0  # seconds per frame
+        # seconds per frame
+        self.frame_interval = 1.0 / fps if fps is not None else 0
 
         # Initialize record reader
         self._init_reader(record_path)
-        self._init_msg_type()
         self._init_channels()
-
-    def _init_msg_type(self):
-        self.camera_msg_type = "omnividi.camera.CameraFrame"
-        self.event_msg_type = "omnividi.event.BaseEvents"
 
     def _init_channels(self):
         self._channels = []
@@ -79,6 +64,11 @@ class RecordSource:
     def set_event_call_back(self, event_call_back: Callable[[EventData], None]):
         self.event_call_back = event_call_back
 
+    def _msg_type_supported(self, msg_type: str) -> bool:
+        if msg_type in RECORD_MSG_TYPE:
+            return RECORD_MSG_TYPE[msg_type]
+        return None
+
     def _parse_messages(self):
         """Parse all messages from the record file"""
         last_frame_time = time.time()  # Track time of last processed frame
@@ -86,19 +76,19 @@ class RecordSource:
             # Check if we should stop processing
             if not self.is_running:
                 break
-
             if not hasattr(message, 'DESCRIPTOR'):
                 logger.error(f"Message {channel_name} has no DESCRIPTOR")
                 continue
-
-            if self.camera_channel == channel_name or \
-                    (self.camera_channel is None and message.DESCRIPTOR.full_name == self.camera_msg_type):
-                image_data = self._parse_camera(message)
-
+            msg_type = message.DESCRIPTOR.full_name
+            support_bz = self._msg_type_supported(msg_type)
+            if support_bz is None:
+                continue
+            if support_bz == "camera" and \
+                    (self.camera_channel == channel_name or self.camera_channel is None):
+                image_data = handle_camera(message)
                 # Call callback if provided
                 if self.camera_call_back:
                     self.camera_call_back(image_data)
-
                     # Control frame rate if fps is set
                     if self.fps is not None:
                         current_time = time.time()
@@ -109,51 +99,21 @@ class RecordSource:
                 else:
                     logger.error(f"Camera callback not set!")
 
-            elif self.event_channel == channel_name or \
-                    (self.event_channel is None and message.DESCRIPTOR.full_name == self.event_msg_type):
+            elif support_bz == "event" and \
+                    (self.event_channel == channel_name or self.event_channel is None):
                 base_events = message
-                # base_events.ParseFromString(msg)
-
+                if "BaseEvents" not in msg_type:
+                    continue
                 for base_event in base_events.base_events:
-                    if base_event.event_region_attr != self.event_type:
+                    event_data = handle_base_event(base_event, self.event_type)
+                    if event_data is None:
                         continue
-                    handle = handle_event_region_attr(
-                        base_event.event_region_attr)
-                    event = handle(base_event.serialized_msg)
-
-                    # entry point
-                    if event.common_event.status != TRIGGER:
-                        continue
-
-                    # Create EventData object
-                    event_data = EventData(
-                        timestamp_ms=event.common_event.timestamp_ms,
-                        timestamp_ms_local=int(time.time() * 1e3),
-                        region_name=event.common_event.region_name,
-                        region_id=event.common_event.region_id,
-                        box=None
-                    )
-
-                    if len(event.common_event.boxes) > 0:
-                        event_data.box = BoxData(
-                            position_x=event.common_event.boxes[0].x,
-                            position_y=event.common_event.boxes[0].y,
-                            position_z=event.common_event.boxes[0].z,
-                            length=event.common_event.boxes[0].length,
-                            width=event.common_event.boxes[0].width,
-                            height=event.common_event.boxes[0].height,
-                            object_type=event.common_event.boxes[0].object_type,
-                            track_id=event.common_event.boxes[0].track_id
-                        )
-                    else:
-                        logger.error(
-                            f"Event {event.common_event.event_id} has no boxes")
-
-                    # Call callback if provided
                     if self.event_call_back:
                         self.event_call_back(event_data)
                     else:
                         logger.error(f"Event callback not set!")
+            elif support_bz == "points":
+                pass
 
     def run(self):
         """Start parsing messages"""
@@ -170,42 +130,12 @@ class RecordSource:
         # Stop parsing if still running
         self.stop()
 
-    def _parse_events(self, message):
-        """Parse event messages"""
-        for channel_name, msg, timestamp in self.record_reader.read_messages(self._channels):
-            if channel_name == self.event_channel:
-                self._handle_event(msg, timestamp)
-
-    def _parse_camera(self, msg):
-        """Parse camera messages"""
-        image_data = ImageData(
-            timestamp_ms=msg.timestamp_ns / 1000000,
-            timestamp_ms_local=int(time.time() * 1e3),
-            width=None,
-            height=None,
-            channels=None,
-            image=None
-        )
-
-        if msg.data_format == DataFormat.OPENCV:
-            image_data.width = msg.cols
-            image_data.height = msg.rows
-            image_data.channels = msg.channels
-            image_data.image = np.frombuffer(
-                msg.data, dtype=np.uint8)
-            image_data.image = image_data.image.reshape(
-                (msg.rows, msg.cols, msg.channels))
-        else:
-            logger.error(
-                f"Unsupported data format: {msg.data_format}")
-        return image_data
-
     @staticmethod
-    def channel_match(channels):
+    def channel_match(channels: list) -> dict:
         out = {}
         for channel in channels:
-            if channel.message_type in RECORD_MSG_TYPE:
-                out[channel.name] = RECORD_MSG_TYPE[channel.message_type]
+            if channel["type"] in RECORD_MSG_TYPE:
+                out[channel["name"]] = RECORD_MSG_TYPE[channel["type"]]
             else:
-                out[channel.name] = channel.message_type
+                out[channel["name"]] = channel["type"]
         return out

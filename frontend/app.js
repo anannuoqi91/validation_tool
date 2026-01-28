@@ -1,357 +1,354 @@
-// 主应用逻辑
-let currentTool = 'lane';
-let activeTab = 'online';
-let isConnected = false;
-let videoStream = null;
+// 主应用逻辑 
+let currentTool = 'lane'; 
+let activeTab = 'online'; 
+let isConnected = false; 
+let videoStream = null; 
 
-// 绘图相关变量
-let isDrawing = false;
-let videoNaturalWidth = 0;
-let videoNaturalHeight = 0;
-let lanes = [];
-let triggers = [];
-let selectedItem = null;
-let currentLane = null;
-let currentTrigger = null;
+// 绘图相关变量 
+let isDrawing = false; 
+let videoNaturalWidth = 0; 
+let videoNaturalHeight = 0; 
+let lanes = []; 
+let triggers = []; 
+let selectedItem = null; 
+let currentLane = null; 
+let currentTrigger = null; 
 
-let dragStart = null;
-let dragTarget = null;
+let dragStart = null; 
+let dragTarget = null; 
 
-// 视频相关变量
-let videoPlayer = document.getElementById('videoPlayer');
-let drawCanvas = document.getElementById('drawCanvas');
-let overlayCanvas = document.getElementById('overlayCanvas');
-let ctx = drawCanvas.getContext('2d');
-let overlayCtx = overlayCanvas.getContext('2d');
+// 视频相关变量 
+let videoPlayer = document.getElementById('videoPlayer'); 
+let drawCanvas = document.getElementById('drawCanvas'); 
+let overlayCanvas = document.getElementById('overlayCanvas'); 
+let ctx = drawCanvas.getContext('2d'); 
+let overlayCtx = overlayCanvas.getContext('2d'); 
 
-// API基础URL
-const API_BASE_URL = 'http://localhost:5000/api';
-// 后端根地址（用于 /video_feed 等非 /api 路由）
+// API基础URL 
+const API_BASE_URL = 'http://localhost:5000/api'; 
+// 后端根地址（用于 /video_feed 等非 /api 路由） 
 const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, ''); 
 
-window.BACKEND_ORIGIN = BACKEND_ORIGIN;
+window.BACKEND_ORIGIN = BACKEND_ORIGIN; 
 
-// 定期更新统计数据
-let statsUpdateInterval = null;
+// 定期更新统计数据 
+let statsUpdateInterval = null; 
 
 
-// 初始化画布
-function initializeCanvas() {
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    videoPlayer.addEventListener('load', () => {
-        // 当图片加载完成时更新实际尺寸
-        if (videoPlayer.naturalWidth > 0 && videoPlayer.naturalHeight > 0) {
-            videoNaturalWidth = videoPlayer.naturalWidth;
-            videoNaturalHeight = videoPlayer.naturalHeight;
-            resizeCanvas();
-        }
-    });
-    videoPlayer.addEventListener('loadedmetadata', resizeCanvas);
-}
+// 初始化画布 
+function initializeCanvas() { 
+    resizeCanvas(); 
+    window.addEventListener('resize', resizeCanvas); 
+    videoPlayer.addEventListener('load', () => { 
+        // 当图片加载完成时更新实际尺寸 
+        if (videoPlayer.naturalWidth > 0 && videoPlayer.naturalHeight > 0) { 
+            videoNaturalWidth = videoPlayer.naturalWidth; 
+            videoNaturalHeight = videoPlayer.naturalHeight; 
+            resizeCanvas(); 
+        } 
+    }); 
+    videoPlayer.addEventListener('loadedmetadata', resizeCanvas); 
+} 
 
-// 调整画布大小
-function resizeCanvas() {
-    drawCanvas.width = videoPlayer.offsetWidth;
-    drawCanvas.height = videoPlayer.offsetHeight;
-    overlayCanvas.width = videoPlayer.offsetWidth;
-    overlayCanvas.height = videoPlayer.offsetHeight;
+// 调整画布大小 
+function resizeCanvas() { 
+    drawCanvas.width = videoPlayer.offsetWidth; 
+    drawCanvas.height = videoPlayer.offsetHeight; 
+    overlayCanvas.width = videoPlayer.offsetWidth; 
+    overlayCanvas.height = videoPlayer.offsetHeight; 
     
-    // 更新视频实际尺寸
+    // 更新视频实际尺寸 
     if (videoPlayer.naturalWidth > 0 && videoPlayer.naturalHeight > 0) {
         videoNaturalWidth = videoPlayer.naturalWidth;
-        videoNaturalHeight = videoPlayer.naturalHeight;
-    }
+        videoNaturalHeight = videoPlayer.naturalHeight; 
+    } 
     
-    redrawAll();
-}
+    redrawAll(); 
+} 
 
 
-// 初始化事件监听器
-function initializeEventListeners() {
-    // 数据源设置
-    document.getElementById('onlineTab').addEventListener('click', () => switchTab('online'));
-    document.getElementById('recordTab').addEventListener('click', () => switchTab('record'));
-    document.querySelector('#onlineTab .primary-btn')?.addEventListener('click', connect);
-    document.querySelector('#recordTab .primary-btn')?.addEventListener('click', loadRecord);
+// 初始化事件监听器  
+function initializeEventListeners() { 
+    // 数据源设置 
+    document.getElementById('onlineTab').addEventListener('click', () => switchTab('online')); 
+    document.getElementById('recordTab').addEventListener('click', () => switchTab('record')); 
+    document.querySelector('#onlineTab .primary-btn')?.addEventListener('click', connect); 
+    document.querySelector('#recordTab .primary-btn')?.addEventListener('click', loadRecord); 
     
-    // 属性设置
-    document.getElementById('laneNumber').addEventListener('input', updateLaneProperties);
-    document.getElementById('laneName').addEventListener('input', updateLaneProperties);
-    document.getElementById('laneColor').addEventListener('input', updateLaneProperties);
-    document.getElementById('laneWidth').addEventListener('input', updateLaneProperties);
-    document.getElementById('triggerName').addEventListener('input', updateTriggerProperties);
-    document.getElementById('triggerColor').addEventListener('input', updateTriggerProperties);
-    document.getElementById('triggerWidth').addEventListener('input', updateTriggerProperties);
+    // 属性设置 
+    document.getElementById('laneNumber').addEventListener('input', updateLaneProperties); 
+    document.getElementById('laneName').addEventListener('input', updateLaneProperties); 
+    document.getElementById('laneColor').addEventListener('input', updateLaneProperties); 
+    document.getElementById('laneWidth').addEventListener('input', updateLaneProperties); 
+    document.getElementById('triggerName').addEventListener('input', updateTriggerProperties); 
+    document.getElementById('triggerColor').addEventListener('input', updateTriggerProperties); 
+    document.getElementById('triggerWidth').addEventListener('input', updateTriggerProperties); 
+} 
+                
+// 工具函数 
+function switchTab(tab) { 
+    activeTab = tab; 
     
-    // 删除按钮事件已移至列表项中
-}
-
-
-// 工具函数
-function switchTab(tab) {
-    activeTab = tab;
-    
-    // 更新标签按钮状态
+    // 更新标签按钮状态 
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active');
-    });
+    }); 
     document.querySelector(`.tab-btn:nth-child(${tab === 'online' ? 1 : 2})`).classList.add('active');
     
-    // 更新标签内容
+    // 更新标签内容 
     document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.remove('active');
     });
-    document.getElementById(tab + 'Tab').classList.add('active');
-}
+    document.getElementById(tab + 'Tab').classList.add('active'); 
+} 
 
-function setTool(tool) {
-    currentTool = tool;
+function setTool(tool) { 
+    currentTool = tool; 
     
-    // 更新工具按钮状态
+    // 更新工具按钮状态 
     document.querySelectorAll('.tool-btn').forEach(btn => {
         btn.classList.remove('active');
     });
-    document.querySelector(`.tool-btn:nth-child(${tool === 'lane' ? 1 : 2})`).classList.add('active');
-}
+    document.querySelector(`.tool-btn:nth-child(${tool === 'lane' ? 1 : 2})`).classList.add('active'); 
+} 
 
 
-// 右侧数据面板（实时统计/车道/触发线）tab 切换
-function switchPanelTab(tabName) {
+// 右侧数据面板（实时统计/车道/触发线）tab 切换 
+function switchPanelTab(tabName) { 
     const panels = {
-        stats: document.getElementById('statsPanel'),
-        lanes: document.getElementById('lanesPanel'),
-        triggers: document.getElementById('triggersPanel'),
-    };
+        stats: document.getElementById('statsPanel'), 
+        lanes: document.getElementById('lanesPanel'), 
+        triggers: document.getElementById('triggersPanel'), 
+    }; 
 
-    // 切换内容区
-    document.querySelectorAll('.panel-content').forEach(p => p.classList.remove('active'));
-    const activePanel = panels[tabName] || panels.stats;
-    if (activePanel) activePanel.classList.add('active');
+    // 切换内容区 
+    document.querySelectorAll('.panel-content').forEach(p => p.classList.remove('active')); 
+    const activePanel = panels[tabName] || panels.stats; 
+    if (activePanel) activePanel.classList.add('active'); 
 
-    // 切换按钮高亮
-    const labelMap = {
-        stats: '实时统计数据',
-        lanes: '车道列表',
-        triggers: '触发线列表',
-    };
-    const activeLabel = labelMap[tabName] || labelMap.stats;
+    // 切换按钮高亮 
+    const labelMap = { 
+        stats: '实时统计数据', 
+        lanes: '车道列表', 
+        triggers: '触发线列表', 
+    }; 
+    const activeLabel = labelMap[tabName] || labelMap.stats; 
 
-    document.querySelectorAll('.panel-tab-btn').forEach(btn => {
-        const isActive = (btn.textContent || '').trim() === activeLabel;
-        btn.classList.toggle('active', isActive);
-    });
-}
+    document.querySelectorAll('.panel-tab-btn').forEach(btn => { 
+        const isActive = (btn.textContent || '').trim() === activeLabel; 
+        btn.classList.toggle('active', isActive); 
+    }); 
+} 
 
-// 更新车道属性
-function updateLaneProperties() {
-    if (!selectedItem || selectedItem.type !== 'lane') return;
+// 更新车道属性 
+function updateLaneProperties() { 
+    if (!selectedItem || selectedItem.type !== 'lane') return; 
     
-    selectedItem.number = parseInt(document.getElementById('laneNumber').value);
-    selectedItem.name = document.getElementById('laneName').value || `车道${selectedItem.number}`;
-    selectedItem.color = document.getElementById('laneColor').value;
-    selectedItem.width = parseInt(document.getElementById('laneWidth').value);
+    selectedItem.number = parseInt(document.getElementById('laneNumber').value); 
+    selectedItem.name = document.getElementById('laneName').value || `车道${selectedItem.number}`; 
+    selectedItem.color = document.getElementById('laneColor').value; 
+    selectedItem.width = parseInt(document.getElementById('laneWidth').value); 
     
-    redrawAll();
+    redrawAll(); 
     updateUI();
-}
+} 
 
 
-// 更新触发线属性
-function updateTriggerProperties() {
-    if (!selectedItem || selectedItem.type !== 'trigger') return;
+// 更新触发线属性 
+function updateTriggerProperties() { 
+    if (!selectedItem || selectedItem.type !== 'trigger') return; 
     
-    selectedItem.name = document.getElementById('triggerName').value;
-    selectedItem.color = document.getElementById('triggerColor').value;
-    selectedItem.width = parseInt(document.getElementById('triggerWidth').value);
+    selectedItem.name = document.getElementById('triggerName').value; 
+    selectedItem.color = document.getElementById('triggerColor').value; 
+    selectedItem.width = parseInt(document.getElementById('triggerWidth').value); 
     
-    redrawAll();
+    redrawAll(); 
     updateUI();
-}
+} 
 
 
-// 绘制控制点
-function drawControlPoint(point, color) {
-    ctx.fillStyle = color;
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, 6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-}
+// 绘制控制点 
+function drawControlPoint(point, color) { 
+    ctx.fillStyle = color; 
+    ctx.strokeStyle = '#ffffff'; 
+    ctx.lineWidth = 2; 
+    ctx.beginPath(); 
+    ctx.arc(point.x, point.y, 6, 0, Math.PI * 2); 
+    ctx.fill(); 
+    ctx.stroke(); 
+} 
 
-// 获取线段中点
-function getMidPoint(p1, p2) {
-    return {
-        x: (p1.x + p2.x) / 2,
-        y: (p1.y + p2.y) / 2
-    };
-}
+// 获取线段中点 
+function getMidPoint(p1, p2) { 
+    return { 
+        x: (p1.x + p2.x) / 2, 
+        y: (p1.y + p2.y) / 2 
+    }; 
+} 
 
 
-// 绘制车道
-function drawLane(lane) {
-    // 即使只有一个点也显示
-    if (lane.points.length >= 1) {
-        // 如果车道被选中，使用红色绘制
-        const color = (selectedItem === lane) ? '#ff0000' : lane.color;
+// 绘制车道 
+function drawLane(lane) { 
+    // 即使只有一个点也显示 
+    if (lane.points.length >= 1) { 
+        // 如果车道被选中，使用红色绘制 
+        const color = (selectedItem === lane) ? '#ff0000' : lane.color; 
         
-        // 绘制线条
-        if (lane.points.length >= 2) {
-            ctx.strokeStyle = color;
-            ctx.lineWidth = lane.width;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.beginPath();
+        // 绘制线条 
+        if (lane.points.length >= 2) { 
+            ctx.strokeStyle = color; 
+            ctx.lineWidth = lane.width; 
+            ctx.lineCap = 'round'; 
+            ctx.lineJoin = 'round'; 
+            ctx.beginPath(); 
             
-            lane.points.forEach((point, index) => {
-                // 将实际坐标转换为显示坐标
-                const displayPoint = actualToDisplay(point.x, point.y);
-                if (index === 0) {
-                    ctx.moveTo(displayPoint.x, displayPoint.y);
-                } else {
-                    ctx.lineTo(displayPoint.x, displayPoint.y);
-                }
-            });
+            lane.points.forEach((point, index) => { 
+            // 将实际坐标转换为显示坐标 
+            const displayPoint = actualToDisplay(point.x, point.y); 
+            if (index === 0) { 
+                ctx.moveTo(displayPoint.x, displayPoint.y); 
+            } else { 
+                ctx.lineTo(displayPoint.x, displayPoint.y); 
+            } 
+        }); 
             
-            // 如果是已完成的车道（currentLane为null或不是当前车道），且有3个以上的点，则闭合多边形
-            if ((!currentLane || currentLane.id !== lane.id) && lane.points.length >= 3) {
-                ctx.closePath();
-            }
+        // 如果是已完成的车道（currentLane为null或不是当前车道），且有3个以上的点，则闭合多边形 
+        if ((!currentLane || currentLane.id !== lane.id) && lane.points.length >= 3) { 
+            ctx.closePath(); 
+        } 
             
-            ctx.stroke();
-        }
+        ctx.stroke(); 
+        } 
         
-        // 绘制车道号
-        if (lane.points.length >= 2) {
-            const p1Display = actualToDisplay(lane.points[0].x, lane.points[0].y);
-            const p2Display = actualToDisplay(lane.points[lane.points.length - 1].x, lane.points[lane.points.length - 1].y);
-            const midPoint = getMidPoint(p1Display, p2Display);
-            overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            overlayCtx.fillRect(midPoint.x - 20, midPoint.y - 15, 40, 30);
-            overlayCtx.fillStyle = '#ffffff';
-            overlayCtx.font = 'bold 14px Arial';
-            overlayCtx.textAlign = 'center';
-            overlayCtx.textBaseline = 'middle';
-            overlayCtx.fillText(lane.number.toString(), midPoint.x, midPoint.y);
-        }
+        // 绘制车道号 
+        if (lane.points.length >= 2) { 
+            const p1Display = actualToDisplay(lane.points[0].x, lane.points[0].y); 
+            const p2Display = actualToDisplay(lane.points[lane.points.length - 1].x, lane.points[lane.points.length - 1].y); 
+            const midPoint = getMidPoint(p1Display, p2Display); 
+            overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.7)'; 
+            overlayCtx.fillRect(midPoint.x - 20, midPoint.y - 15, 40, 30); 
+            overlayCtx.fillStyle = '#ffffff'; 
+            overlayCtx.font = 'bold 14px Arial'; 
+            overlayCtx.textAlign = 'center'; 
+            overlayCtx.textBaseline = 'middle'; 
+            overlayCtx.fillText(lane.number.toString(), midPoint.x, midPoint.y); 
+        } 
         
-        // 绘制控制点，选中项使用红色控制点
-        lane.points.forEach(point => {
-            const displayPoint = actualToDisplay(point.x, point.y);
-            drawControlPoint(displayPoint, color);
-        });
-    }
-}
+        // 绘制控制点，选中项使用红色控制点 
+        lane.points.forEach(point => { 
+            const displayPoint = actualToDisplay(point.x, point.y); 
+            drawControlPoint(displayPoint, color); 
+        }); 
+    } 
+} 
 
-// 绘制触发线
-function drawTrigger(trigger) {
-    // 即使只有一个点也显示
-    if (trigger.points.length >= 1) {
-        // 如果触发线被选中，使用红色绘制
-        const color = (selectedItem === trigger) ? '#ff0000' : trigger.color;
+// 绘制触发线 
+function drawTrigger(trigger) { 
+    // 即使只有一个点也显示 
+    if (trigger.points.length >= 1) { 
+        // 如果触发线被选中，使用红色绘制 
+        const color = (selectedItem === trigger) ? '#ff0000' : trigger.color; 
         
-        // 绘制线条
+        // 绘制线条 
         if (trigger.points.length >= 2) {
-            ctx.strokeStyle = color;
-            ctx.lineWidth = trigger.width;
+            ctx.strokeStyle = color; 
+            ctx.lineWidth = trigger.width; 
             ctx.setLineDash([10, 5]); // 虚线样式
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.beginPath();
+            ctx.lineCap = 'round'; 
+            ctx.lineJoin = 'round'; 
+            ctx.beginPath(); 
             
-            trigger.points.forEach((point, index) => {
-                // 将实际坐标转换为显示坐标
-                const displayPoint = actualToDisplay(point.x, point.y);
+            trigger.points.forEach((point, index) => { 
+                // 将实际坐标转换为显示坐标 
+                const displayPoint = actualToDisplay(point.x, point.y); 
                 if (index === 0) {
-                    ctx.moveTo(displayPoint.x, displayPoint.y);
-                } else {
-                    ctx.lineTo(displayPoint.x, displayPoint.y);
+                ctx.moveTo(displayPoint.x, displayPoint.y); 
+            } else { 
+                ctx.lineTo(displayPoint.x, displayPoint.y); 
                 }
             });
             
             ctx.stroke();
             ctx.setLineDash([]); // 重置为实线
-        }
+                } 
         
-        // 绘制触发线名称
-        if (trigger.points.length >= 2) {
-            const p1Display = actualToDisplay(trigger.points[0].x, trigger.points[0].y);
-            const p2Display = actualToDisplay(trigger.points[trigger.points.length - 1].x, trigger.points[trigger.points.length - 1].y);
-            const midPoint = getMidPoint(p1Display, p2Display);
-            overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            const textWidth = overlayCtx.measureText(trigger.name).width;
-            overlayCtx.fillRect(midPoint.x - textWidth/2 - 5, midPoint.y - 15, textWidth + 10, 30);
-            overlayCtx.fillStyle = '#ffffff';
-            overlayCtx.font = 'bold 14px Arial';
-            overlayCtx.textAlign = 'center';
-            overlayCtx.textBaseline = 'middle';
-            overlayCtx.fillText(trigger.name, midPoint.x, midPoint.y);
-        }
+                // 绘制触发线名称 
+                if (trigger.points.length >= 2) { 
+                const p1Display = actualToDisplay(trigger.points[0].x, trigger.points[0].y); 
+                const p2Display = actualToDisplay(trigger.points[trigger.points.length - 1].x, trigger.points[trigger.points.length - 1].y); 
+                const midPoint = getMidPoint(p1Display, p2Display); 
+                overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.7)'; 
+                const textWidth = overlayCtx.measureText(trigger.name).width; 
+                overlayCtx.fillRect(midPoint.x - textWidth/2 - 5, midPoint.y - 15, textWidth + 10, 30);
+                overlayCtx.fillStyle = '#ffffff';
+                overlayCtx.font = 'bold 14px Arial'; 
+                overlayCtx.textAlign = 'center'; 
+                overlayCtx.textBaseline = 'middle'; 
+                overlayCtx.fillText(trigger.name, midPoint.x, midPoint.y); 
+            } 
         
-        // 绘制控制点，选中项使用红色控制点
-        trigger.points.forEach(point => {
-            const displayPoint = actualToDisplay(point.x, point.y);
+            // 绘制控制点，选中项使用红色控制点 
+            trigger.points.forEach(point => { 
+                const displayPoint = actualToDisplay(point.x, point.y); 
             drawControlPoint(displayPoint, color);
         });
     }
 }
 
-// 绘制选中状态
+                // 绘制选中状态 
 function drawSelection(item) {
     if (item.points.length < 2) return;
     
-    ctx.strokeStyle = '#ff0000';
-    ctx.lineWidth = item.width + 4;
+    ctx.strokeStyle = '#ff0000'; 
+    ctx.lineWidth = item.width + 4; 
     ctx.setLineDash([5, 5]);
     ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
+    ctx.lineJoin = 'round'; 
+    ctx.beginPath(); 
     
-    item.points.forEach((point, index) => {
-        // 将实际坐标转换为显示坐标
+    item.points.forEach((point, index) => { 
+        // 将实际坐标转换为显示坐标 
         const displayPoint = actualToDisplay(point.x, point.y);
         if (index === 0) {
             ctx.moveTo(displayPoint.x, displayPoint.y);
         } else {
-            ctx.lineTo(displayPoint.x, displayPoint.y);
-        }
-    });
+            ctx.lineTo(displayPoint.x, displayPoint.y); 
+        } 
+    }); 
     
-    ctx.stroke();
-    ctx.setLineDash([]);
-}
+    ctx.stroke(); 
+    ctx.setLineDash([]); 
+} 
 
 
-
-// 重绘所有内容
+                                                            
+// 重绘所有内容 
 function redrawAll() {
-    // 清空画布
-    ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    // 清空画布 
+    ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height); 
+    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height); 
     
-    // 绘制所有车道
-    lanes.forEach(lane => drawLane(lane));
+    // 绘制所有车道 
+    lanes.forEach(lane => drawLane(lane)); 
     
     // 绘制所有触发线
-    triggers.forEach(trigger => drawTrigger(trigger));
+    triggers.forEach(trigger => drawTrigger(trigger)); 
     
-    // 绘制选中状态
+    // 绘制选中状态 
     if (selectedItem) {
         drawSelection(selectedItem);
     }
-}
-
+} 
+    
 // 更新车道列表
-function updateLanesList() {
-  const lanesList = document.getElementById('lanesList');
-  if (!lanesList) return;
-  lanesList.innerHTML = '';
+function updateLanesList() { 
+    const lanesList = document.getElementById('lanesList'); 
+    if (!lanesList) return; 
+    lanesList.innerHTML = '';
 
-  lanes.forEach((lane, index) => {
+lanes.forEach((lane, index) => { 
     const laneCard = document.createElement('div');
-    laneCard.className = 'item-card' + (selectedItem === lane ? ' selected' : '');
+laneCard.className = 'item-card' + (selectedItem === lane ? ' selected' : '');
 
     laneCard.innerHTML = `
       <div class="item-info">
@@ -363,60 +360,60 @@ function updateLanesList() {
       </div>
     `;
 
-    // ✅ 强制这一行横向排布（就算你CSS没生效也能顶住）
-    const row = laneCard.querySelector('.item-title-row');
-    const title = laneCard.querySelector('.item-title');
-    const delBtn = laneCard.querySelector('.delete-btn');
+// ✅ 强制这一行横向排布（就算你CSS没生效也能顶住） 
+const row = laneCard.querySelector('.item-title-row'); 
+const title = laneCard.querySelector('.item-title'); 
+const delBtn = laneCard.querySelector('.delete-btn'); 
     if (row) {
       row.style.display = 'flex';
-      row.style.alignItems = 'center';
-      row.style.justifyContent = 'space-between';
-      row.style.gap = '8px';
-    }
-    if (title) {
-      title.style.flex = '1';
-      title.style.minWidth = '0';
-      title.style.whiteSpace = 'nowrap';
-      title.style.overflow = 'hidden';
-      title.style.textOverflow = 'ellipsis';
-    }
-    if (delBtn) {
-      delBtn.style.flex = '0 0 auto';
-      delBtn.style.background = 'transparent';
-      delBtn.style.border = 'none';
-      delBtn.style.cursor = 'pointer';
-      delBtn.style.padding = '2px 6px';
-      delBtn.style.lineHeight = '1';
-    }
+    row.style.alignItems = 'center'; 
+    row.style.justifyContent = 'space-between'; 
+    row.style.gap = '8px'; 
+} 
+if (title) { 
+    title.style.flex = '1'; 
+    title.style.minWidth = '0'; 
+    title.style.whiteSpace = 'nowrap'; 
+    title.style.overflow = 'hidden'; 
+    title.style.textOverflow = 'ellipsis';
+} 
+if (delBtn) { 
+    delBtn.style.flex = '0 0 auto'; 
+    delBtn.style.background = 'transparent'; 
+    delBtn.style.border = 'none'; 
+    delBtn.style.cursor = 'pointer'; 
+    delBtn.style.padding = '2px 6px'; 
+    delBtn.style.lineHeight = '1';
+ }
 
     // 点击卡片选择（点删除不触发）
-    laneCard.addEventListener('click', (e) => {
-      if (e?.target?.closest?.('.delete-btn')) return;
-      selectedItem = lane;
-      document.getElementById('laneProperties').style.display = 'block';
-      document.getElementById('triggerProperties').style.display = 'none';
-      updateUI();
-      redrawAll();
+    laneCard.addEventListener('click', (e) => { 
+        if (e?.target?.closest?.('.delete-btn')) return;
+        selectedItem = lane; 
+        document.getElementById('laneProperties').style.display = 'block'; 
+        document.getElementById('triggerProperties').style.display = 'none'; 
+        updateUI(); 
+        redrawAll(); 
     });
 
     // ✅ 删除：传 index（不是 lane.id）
-    delBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      deleteLane(index);
-    });
+    delBtn?.addEventListener('click', (e) => { 
+        e.stopPropagation(); 
+        deleteLane(index); 
+    }); 
 
-    lanesList.appendChild(laneCard);
-  });
-}
+        lanesList.appendChild(laneCard); 
+    }); 
+} 
 
-function updateTriggersList() {
-  const triggersList = document.getElementById('triggersList');
-  if (!triggersList) return;
-  triggersList.innerHTML = '';
+function updateTriggersList() { 
+    const triggersList = document.getElementById('triggersList');
+     if (!triggersList) return; 
+    triggersList.innerHTML = ''; 
 
   triggers.forEach((trigger, index) => {
     const triggerCard = document.createElement('div');
-    triggerCard.className = 'item-card' + (selectedItem === trigger ? ' selected' : '');
+        triggerCard.className = 'item-card' + (selectedItem === trigger ? ' selected' : ''); 
 
     triggerCard.innerHTML = `
       <div class="item-info">
@@ -431,97 +428,97 @@ function updateTriggersList() {
     // ✅ 强制横向排布
     const row = triggerCard.querySelector('.item-title-row');
     const title = triggerCard.querySelector('.item-title');
-    const delBtn = triggerCard.querySelector('.delete-btn');
+    const delBtn = triggerCard.querySelector('.delete-btn'); 
     if (row) {
-      row.style.display = 'flex';
-      row.style.alignItems = 'center';
-      row.style.justifyContent = 'space-between';
-      row.style.gap = '8px';
-    }
+        row.style.display = 'flex';
+        row.style.alignItems = 'center'; 
+        row.style.justifyContent = 'space-between';
+        row.style.gap = '8px'; 
+    } 
     if (title) {
-      title.style.flex = '1';
-      title.style.minWidth = '0';
-      title.style.whiteSpace = 'nowrap';
-      title.style.overflow = 'hidden';
-      title.style.textOverflow = 'ellipsis';
-    }
+        title.style.flex = '1';
+        title.style.minWidth = '0'; 
+        title.style.whiteSpace = 'nowrap'; 
+        title.style.overflow = 'hidden'; 
+        title.style.textOverflow = 'ellipsis'; 
+    } 
     if (delBtn) {
-      delBtn.style.flex = '0 0 auto';
-      delBtn.style.background = 'transparent';
-      delBtn.style.border = 'none';
-      delBtn.style.cursor = 'pointer';
-      delBtn.style.padding = '2px 6px';
-      delBtn.style.lineHeight = '1';
-    }
+        delBtn.style.flex = '0 0 auto';
+        delBtn.style.background = 'transparent';
+        delBtn.style.border = 'none';
+        delBtn.style.cursor = 'pointer'; 
+        delBtn.style.padding = '2px 6px';
+        delBtn.style.lineHeight = '1';
+    } 
 
-    triggerCard.addEventListener('click', (e) => {
-      if (e?.target?.closest?.('.delete-btn')) return;
-      selectedItem = trigger;
-      document.getElementById('laneProperties').style.display = 'none';
-      document.getElementById('triggerProperties').style.display = 'block';
-      updateUI();
-      redrawAll();
+    triggerCard.addEventListener('click', (e) => { 
+        if (e?.target?.closest?.('.delete-btn')) return; 
+        selectedItem = trigger; 
+        document.getElementById('laneProperties').style.display = 'none'; 
+        document.getElementById('triggerProperties').style.display = 'block';
+        updateUI();
+        redrawAll();
     });
 
     // ✅ 删除：传 index（不是 trigger.id）
-    delBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      deleteTrigger(index);
-    });
+    delBtn?.addEventListener('click', (e) => { 
+        e.stopPropagation(); 
+        deleteTrigger(index); 
+    }); 
 
-    triggersList.appendChild(triggerCard);
-  });
+    triggersList.appendChild(triggerCard); 
+    }); 
 }
 
 
 // 更新属性面板
-function updatePropertiesPanel() {
+function updatePropertiesPanel() { 
     const laneProperties = document.getElementById('laneProperties');
-    const triggerProperties = document.getElementById('triggerProperties');
+     const triggerProperties = document.getElementById('triggerProperties');
     
     // 添加null检查
-    if (!laneProperties || !triggerProperties) {
-        console.warn('属性面板DOM元素未找到');
-        return;
-    }
-    if (!selectedItem) {
+ if (!laneProperties || !triggerProperties) { 
+    console.warn('属性面板DOM元素未找到'); 
+    return; 
+} 
+if (!selectedItem) {
         // 不重置为默认值，保持当前属性面板的值
         
         // 显示当前工具对应的属性面板
-        document.getElementById('laneProperties').style.display = currentTool === 'lane' ? 'block' : 'none';
+document.getElementById('laneProperties').style.display = currentTool === 'lane' ? 'block' : 'none'; 
         document.getElementById('triggerProperties').style.display = currentTool === 'trigger' ? 'block' : 'none';
         return;
-    }
+ } 
     
-    if (selectedItem.type === 'lane') {
+ if (selectedItem.type === 'lane') {
         // 显示车道属性面板
-        document.getElementById('laneProperties').style.display = 'block';
-        document.getElementById('triggerProperties').style.display = 'none';
+document.getElementById('laneProperties').style.display = 'block'; 
+document.getElementById('triggerProperties').style.display = 'none';
         
         // 更新属性值
-        document.getElementById('laneNumber').value = selectedItem.number;
+document.getElementById('laneNumber').value = selectedItem.number; 
         document.getElementById('laneName').value = selectedItem.name || `车道${selectedItem.number}`;
-        document.getElementById('laneColor').value = selectedItem.color;
-        document.getElementById('laneWidth').value = selectedItem.width;
-    } else if (selectedItem.type === 'trigger') {
+ document.getElementById('laneColor').value = selectedItem.color; 
+ document.getElementById('laneWidth').value = selectedItem.width;
+ } else if (selectedItem.type === 'trigger') {
         // 显示触发线属性面板
-        document.getElementById('laneProperties').style.display = 'none';
-        document.getElementById('triggerProperties').style.display = 'block';
+document.getElementById('laneProperties').style.display = 'none'; 
+document.getElementById('triggerProperties').style.display = 'block';
         
         // 更新属性值
-        document.getElementById('triggerName').value = selectedItem.name;
-        document.getElementById('triggerColor').value = selectedItem.color;
-        document.getElementById('triggerWidth').value = selectedItem.width;
+document.getElementById('triggerName').value = selectedItem.name; 
+document.getElementById('triggerColor').value = selectedItem.color; 
+document.getElementById('triggerWidth').value = selectedItem.width;
     }
 }
 
 // 更新UI
 function updateUI() {
     // 更新车道列表
-    updateLanesList();
+ updateLanesList();
     
     // 更新触发线列表
-    updateTriggersList();
+updateTriggersList();
     
     // 更新属性面板
     updatePropertiesPanel();
@@ -530,14 +527,14 @@ function updateUI() {
 // 显示通知消息
 function showNotification(message, type = 'info') {
     // 移除之前的通知
-    const existingNotification = document.querySelector('.notification');
-    if (existingNotification) {
-        existingNotification.remove();
-    }
+const existingNotification = document.querySelector('.notification'); 
+if (existingNotification) { 
+    existingNotification.remove(); 
+}
     
-    const notification = document.createElement('div');
+ const notification = document.createElement('div'); 
     notification.className = `notification notification-${type}`;
-    notification.textContent = message;
+ notification.textContent = message;
     
     // 添加样式
     notification.style.cssText = `
@@ -577,27 +574,27 @@ function showNotification(message, type = 'info') {
 // 开始定期更新统计数据
 function startStatsUpdate() {
     // 清除之前的定时器
-    if (window.statsUpdateInterval) {
-        clearInterval(window.statsUpdateInterval);
-    }
+if (window.statsUpdateInterval) { 
+    clearInterval(window.statsUpdateInterval); 
+}
     
     // 每2秒更新一次统计数据
-    window.statsUpdateInterval = setInterval(updateStats, 2000);
+window.statsUpdateInterval = setInterval(updateStats, 2000); 
 }
 
 
 // 连接RTSP流
-async function connect() {
-    const rtspUrl = document.getElementById('rtspUrl').value;
-    const cyberEventChannel = document.getElementById('cyberEventChannel').value;
-    const cyberPointcloudChannel = document.getElementById('cyberPointcloudChannel').value;
+async function connect() { 
+    const rtspUrl = document.getElementById('rtspUrl').value; 
+    const cyberEventChannel = document.getElementById('cyberEventChannel').value; 
+    const cyberPointcloudChannel = document.getElementById('cyberPointcloudChannel').value; 
     
     if (!rtspUrl) {
         showNotification('请输入RTSP URL', 'error');
         return;
     }
 
-    const connectBtn = document.querySelector('#onlineTab .primary-btn');
+    const connectBtn = document.querySelector('#onlineTab .primary-btn'); 
     connectBtn.disabled = true;
     connectBtn.textContent = '连接中...';
 
@@ -649,59 +646,116 @@ async function connect() {
     }
 }
 
-// 加载Record文件
-async function loadRecord() {
-    const fileInput = document.getElementById('recordFile');
-    if (fileInput.files.length === 0) {
-        alert('请选择记录文件');
-        return;
+//加载Record文件 - 打开channel选择弹窗 
+async function loadRecord() { 
+    const fileInput = document.getElementById('recordFile'); 
+    if (fileInput.files.length === 0) { 
+        alert('请选择记录文件'); 
+        return; 
+    } 
+    const formData = new FormData(); 
+    formData.append('record_file', fileInput.files[0]); 
+    const loadBtn = document.querySelector('#recordTab .primary-btn'); 
+    loadBtn.disabled = true; 
+    loadBtn.textContent = '加载中...'; 
+    try { 
+        const response = await fetch(`${API_BASE_URL}/record/load`, { 
+            method: 'POST', 
+            body: formData 
+        }); 
+        const data = await response.json(); 
+        if (data.success && data.channels) {
+            //打开channel选择弹窗 
+            openChannelSelectModal(data.channels, fileInput.files[0]); 
+        } else { 
+            console.error('API返回数据格式不正确:', data); 
+            throw new Error(data.message || '加载失败'); 
+        } 
+    } catch (error) { 
+            console.error('加载错误:', error); 
+            alert('加载失败: ' + error.message); 
+    } finally { 
+        loadBtn.disabled = false; 
+        loadBtn.textContent = '加载'; 
+    } 
+} 
+
+let currentRecordFile = null; 
+
+function openChannelSelectModal(channels, file) { 
+    currentRecordFile = file; 
+    const cameraSelect = document.getElementById('cameraChannel'); 
+    const eventSelect = document.getElementById('eventChannel'); 
+    const boxSelect = document.getElementById('boxChannel'); 
+    const pointsSelect = document.getElementById('pointsChannel'); 
+    if (!cameraSelect || !eventSelect || !boxSelect || !pointsSelect) { 
+        console.error('无法找到channel选择下拉框元素'); 
+        return; 
     }
+    //清空选项 
+    const resetOptions = (selectEl) => { 
+        selectEl.innerHTML = '<option value="">-- 选择 --</option>'; 
+    }; 
+    resetOptions(cameraSelect); 
+    resetOptions(eventSelect); 
+    resetOptions(boxSelect); 
+    resetOptions(pointsSelect);
+    //填充选项 
+    for (const [name, type] of Object.entries(channels)) { 
+        const option = document.createElement('option'); 
+        option.value = name; 
+        option.textContent = name; 
+        if (type === 'camera') { 
+            cameraSelect.appendChild(option); 
+        } else if (type === 'event') { 
+            eventSelect.appendChild(option); 
+        } else if (type === 'box') { 
+            boxSelect.appendChild(option); 
+        } else if (type === 'points') { 
+            pointsSelect.appendChild(option); 
+        } }
+    //设置默认值 
+    setDefaultChannel(cameraSelect, channels, 'camera'); 
+    setDefaultChannel(eventSelect, channels, 'event'); 
+    setDefaultChannel(boxSelect, channels, 'box'); 
+    setDefaultChannel(pointsSelect, channels, 'points');
+    //显示弹窗：只加一个 
+    const modal = document.getElementById('channelSelectModal'); 
+    if (modal) { 
+        modal.classList.add('is-open'); 
+    } 
+} 
 
-    const formData = new FormData();
-    formData.append('record_file', fileInput.files[0]);
+function setDefaultChannel(selectElement, channels, type) { 
+    for (const [name, channelType] of Object.entries(channels)) { 
+        if (channelType === type) { 
+            selectElement.value = name; 
+            return; 
+        } 
+    } 
+} 
 
-    const loadBtn = document.querySelector('#recordTab .primary-btn');
-    loadBtn.disabled = true;
-    loadBtn.textContent = '加载中...';
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/record/load`, {
-            method: 'POST',
-            body: formData
-        });
-
-        const data = await response.json();
-        
-        if (data.success) {
-            isConnected = true;
-            startVideoStream();
-            updateConnectionStatus(true);
-            alert('记录文件加载成功！');
-        } else {
-            throw new Error(data.message || '加载失败');
-        }
-    } catch (error) {
-        console.error('加载错误:', error);
-        alert('加载失败: ' + error.message);
-    } finally {
-        loadBtn.disabled = false;
-        loadBtn.textContent = '加载';
-    }
+function closeChannelSelectModal() { 
+    const modal = document.getElementById('channelSelectModal'); 
+    if (modal) { 
+        modal.classList.remove('is-open'); 
+    } 
+    currentRecordFile = null; 
 }
 
-// 启动视频流
-function startVideoStream() {
-  const videoPlayer = document.getElementById('videoPlayer');
-  if (!videoPlayer) {
-    console.warn('[startVideoStream] #videoPlayer not found');
-    return;
-  }
+// 启动视频流 
+function startVideoStream() { 
+    const videoPlayer = document.getElementById('videoPlayer'); 
+    if (!videoPlayer) { 
+        console.warn('[startVideoStream] #videoPlayer not found'); 
+        return; 
+    }
 
-  // 清除之前的视频流
-  videoPlayer.src = '';
+    // 清除之前的视频流 
+    videoPlayer.src = '';
 
-  // 添加错误处理
-  videoPlayer.onerror = function () {
+    // 添加错误处理 
+    videoPlayer.onerror = function () { 
     console.error('视频流加载错误');
     showNotification('视频流加载失败，请检查连接', 'error');
   };
@@ -728,17 +782,17 @@ function startVideoStream() {
 // 更新连接状态显示
 function updateConnectionStatus(connected, detailText = '') {
   // 顶部状态（你 HTML 里已有）
-  const top = document.getElementById('connectionStatus');
-  if (top) top.textContent = connected ? '已连接' : '未连接';
+const top = document.getElementById('connectionStatus');
+ if (top) top.textContent = connected ? '已连接' : '未连接';
 
   // 在线 tab 按钮下状态
-  const row = ensureOnlineStatusRow();
-  if (!row) return;
+const row = ensureOnlineStatusRow(); 
+if (!row) return; 
 
-  const dot = document.getElementById('onlineConnectionStatusDot');
-  const text = document.getElementById('onlineConnectionStatusText');
+const dot = document.getElementById('onlineConnectionStatusDot'); 
+const text = document.getElementById('onlineConnectionStatusText'); 
 
-  const baseText = connected ? '已连接' : '未连接';
+const baseText = connected ? '已连接' : '未连接'; 
   const fullText = detailText ? `${baseText}（${detailText}）` : baseText;
 
   if (text) text.textContent = fullText;
@@ -749,7 +803,7 @@ function updateConnectionStatus(connected, detailText = '') {
 
 function ensureOnlineStatusRow() {
   // 连接按钮（在线 tab 里的 primary-btn）
-  const btn = document.querySelector('#onlineTab .primary-btn');
+const btn = document.querySelector('#onlineTab .primary-btn'); 
   if (!btn) {
     console.warn('[ensureOnlineStatusRow] connect button not found');
     return null;
@@ -760,7 +814,7 @@ function ensureOnlineStatusRow() {
   if (row) return row;
 
   // 创建一行：● + 文本
-  row = document.createElement('div');
+row = document.createElement('div'); 
   row.id = 'onlineConnectionStatusRow';
   row.style.marginTop = '8px';
   row.style.display = 'flex';
@@ -848,9 +902,9 @@ function applyConfig(config) {
     
     try {
         // 应用车道配置
-        if (config.lanes && Array.isArray(config.lanes)) {
+if (config.lanes && Array.isArray(config.lanes)) {
             // 清空现有车道
-            lanes = [];
+lanes = [];
             
             // 添加新车道
             config.lanes.forEach((lane, idx) => {
@@ -867,9 +921,9 @@ function applyConfig(config) {
         }
         
         // 应用触发线配置
-        if (config.triggers && Array.isArray(config.triggers)) {
+if (config.triggers && Array.isArray(config.triggers)) {
             // 清空现有触发线
-            triggers = [];
+triggers = [];
             
             // 添加新触发线
             config.triggers.forEach(trigger => {
@@ -1884,17 +1938,17 @@ function getVideoDisplayRect() {
         displayWidth = containerWidth;
         displayHeight = containerWidth / videoAspect;
         offsetX = 0;
-        offsetY = (containerHeight - displayHeight) / 2;
-    } else {
+                offsetY = (containerHeight - displayHeight) / 2; 
+            } else { 
         // 视频更高，以高度为准
-        displayWidth = containerHeight * videoAspect;
-        displayHeight = containerHeight;
+            displayWidth = containerHeight * videoAspect; 
+            displayHeight = containerHeight; 
         offsetX = (containerWidth - displayWidth) / 2;
         offsetY = 0;
     }
     
     const scaleX = displayWidth / videoNaturalWidth;
-    const scaleY = displayHeight / videoNaturalHeight;
+                const scaleY = displayHeight / videoNaturalHeight; 
     
     return {
         x: offsetX,
@@ -1904,4 +1958,35 @@ function getVideoDisplayRect() {
         scaleX: scaleX,
         scaleY: scaleY
     };
+}
+
+async function confirmChannelSelect() { 
+    const cameraChannel = document.getElementById('cameraChannel').value; 
+    const eventChannel = document.getElementById('eventChannel').value; 
+    const boxChannel = document.getElementById('boxChannel').value; 
+    const pointsChannel = document.getElementById('pointsChannel').value; 
+    if (currentRecordFile) { 
+        const formData = new FormData(); 
+        formData.append('record_file', currentRecordFile); 
+        formData.append('camera_channel', cameraChannel); 
+        formData.append('event_channel', eventChannel); 
+        formData.append('box_channel', boxChannel); 
+        formData.append('points_channel', pointsChannel); 
+        try { 
+            const response = await fetch(`${API_BASE_URL}/record/playRecord`, { method: 'POST', body: formData }); 
+            const data = await response.json(); 
+            if (data.success) { 
+                isConnected = true; 
+                startVideoStream(); 
+                updateConnectionStatus(true); 
+                closeChannelSelectModal(); 
+                showNotification('记录文件加载成功！', 'success'); 
+            } else { 
+                throw new Error(data.message || '播放失败'); 
+            } 
+        } catch (error) { 
+            console.error('播放错误:', error); 
+            alert('播放失败: ' + error.message); 
+        } 
+    } 
 }

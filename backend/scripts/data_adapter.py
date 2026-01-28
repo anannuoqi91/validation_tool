@@ -10,281 +10,22 @@ Features:
 3. Support subscribing to Apollo Cyber channels for events or parsing BaseEvents from records
 """
 
-import queue
-from abc import ABC, abstractmethod
+
 from typing import Optional, Tuple, Callable
-import time
 import threading
-import numpy as np
-import cv2
 from backend.utils.log_util import logger
 from backend.scripts.record_source import RecordSource
-from backend.scripts.simpl_data_process import handle_event_region_attr
+from backend.scripts.camera_source import *
+from backend.scripts.simpl_source import EventSource, ChannelEventSource
+from backend.modules.simpl_modules import RECORD_MSG_TYPE
 try:
-    from cyber_record.record import Record
     from cyber_py3 import cyber
-    from proto.inno_event_pb2 import BaseEvents, TRIGGER
     from proto.region_pb2 import EventRegionAttribute
-    from proto.drivers_pb2 import PointCloud2
-    from backend.modules.common_modules import BoxData
     from backend.modules.camera_modules import ImageData
-    from backend.modules.simpl_modules import EventData
+    from backend.modules.simpl_modules import FrameData
 except ImportError as e:
     logger.error(f"Failed to import cyber module: {e}")
     logger.info("Running in limited mode without cyber support")
-
-
-class CameraSource(ABC):
-    """Abstract base class for camera sources"""
-
-    @abstractmethod
-    def get_image(self) -> Optional[ImageData]:
-        """Get the next image from the source"""
-        pass
-
-    @abstractmethod
-    def release(self):
-        """Release the camera source"""
-        pass
-
-
-class RtspCameraSource(CameraSource):
-    """Camera source from RTSP URL"""
-
-    def __init__(self, rtsp_url: str):
-        self.rtsp_url = rtsp_url
-        self.cap = cv2.VideoCapture(rtsp_url)
-        if not self.cap.isOpened():
-            raise RuntimeError(f"Failed to open RTSP stream: {rtsp_url}")
-
-        # Create a queue for caching image data
-        # Limit queue size to 10 frames
-        self.image_queue = queue.Queue(maxsize=10)
-        self.is_running = True
-
-        # Start a thread for capturing images
-        self.capture_thread = threading.Thread(target=self._capture_loop)
-        self.capture_thread.daemon = True
-        self.capture_thread.start()
-
-    def _capture_loop(self):
-        """Internal thread for capturing images from RTSP stream"""
-        while self.is_running:
-            ret, frame = self.cap.read()
-            if not ret:
-                time.sleep(0.1)  # Small delay if frame read fails
-                continue
-
-            timestamp_ms = int(time.time() * 1e3)  # milliseconds
-            height, width, channels = frame.shape
-
-            image_data = ImageData(
-                timestamp_ms=timestamp_ms,
-                timestamp_ms_local=timestamp_ms,
-                image=frame,
-                width=width,
-                height=height,
-                channels=channels
-            )
-
-            # Add to queue, removing oldest frame if full
-            try:
-                self.image_queue.put_nowait(image_data)
-            except queue.Full:
-                # Remove oldest frame
-                self.image_queue.get_nowait()
-                self.image_queue.put_nowait(image_data)
-
-            # Small delay to control capture rate
-            # time.sleep(0.033)  # ~30 FPS
-
-    def get_image(self) -> Optional[ImageData]:
-        """Get the latest image data from the queue"""
-        if self.image_queue.empty():
-            return None
-
-        # Get the latest image by clearing the queue except for the last frame
-        latest_image = None
-        while not self.image_queue.empty():
-            latest_image = self.image_queue.get_nowait()
-
-        return latest_image
-
-    def release(self):
-        """Stop the capture thread and release resources"""
-        self.is_running = False
-
-        # Only join the capture thread if it exists and is alive
-        if hasattr(self, 'capture_thread') and self.capture_thread.is_alive():
-            # Add timeout to avoid blocking
-            self.capture_thread.join(timeout=1.0)
-
-        # Only release the capture if it's open
-        try:
-            if self.cap.isOpened():
-                self.cap.release()
-        except Exception as e:
-            logger.error(f"Error releasing RTSP capture: {e}")
-
-        # Clear the queue safely
-        try:
-            while not self.image_queue.empty():
-                self.image_queue.get_nowait()
-        except Exception as e:
-            logger.error(f"Error clearing image queue: {e}")
-
-
-class EventSource(ABC):
-    """Abstract base class for event sources"""
-
-    @abstractmethod
-    def get_events(self) -> Optional[EventData]:
-        """Get the next event data from the source"""
-        pass
-
-    @abstractmethod
-    def release(self):
-        """Release the event source"""
-        pass
-
-
-class ChannelEventSource(EventSource):
-    """Event source from Apollo Cyber channel subscription"""
-
-    def __init__(self, channel_name: str = None,  pointcloud_channel_name: str = None, event_type: int = EventRegionAttribute.FLOW_EVENT):
-        if channel_name is None:
-            raise ValueError("channel_name must be provided")
-
-        self.channel_name = channel_name
-        self.pointcloud_channel_name = pointcloud_channel_name
-        self.subscribed = True
-        self.event_type = event_type
-        # Queue for storing event data with a maximum size to prevent unbounded growth
-        self.event_queue = queue.Queue(maxsize=1000)
-        self.pointcloud_queue = queue.Queue(maxsize=10)
-        self.event_reader = None
-        self.pointcloud_reader = None
-
-        # Initialize cyber and create node
-        cyber.init()
-        self.cyber_node = cyber.Node("validation_tool_node")
-        self.event_reader = self.cyber_node.create_reader(
-            self.channel_name, BaseEvents, self._event_callback)
-
-        if self.pointcloud_channel_name is not None:
-            self.pointcloud_reader = self.cyber_node.create_reader(
-                self.pointcloud_channel_name, PointCloud2, self._pointcloud_callback)
-
-    def set_channel_name(self, channel_name: str = None, pointcloud_channel_name: str = None):
-        # if not cyber.ok():
-        #     raise RuntimeError("Cyber is not initialized.")
-        if channel_name is not None:
-            self.channel_name = channel_name
-            self.event_reader = self.cyber_node.create_reader(
-                self.channel_name, BaseEvents, self._event_callback)
-        if pointcloud_channel_name is not None:
-            self.pointcloud_channel_name = pointcloud_channel_name
-            self.pointcloud_reader = self.cyber_node.create_reader(
-                self.pointcloud_channel_name, PointCloud2, self._pointcloud_callback)
-
-    def _event_callback(self, msg: BaseEvents):
-        """Callback function for processing received events and queuing them"""
-        # Process the message and convert it to EventData
-        # print(f"Received event message with {len(msg.base_events)} base events")
-
-        for base_event in msg.base_events:
-            if base_event.event_region_attr != self.event_type:
-                continue
-            handle = handle_event_region_attr(base_event.event_region_attr)
-            event = handle(base_event.serialized_msg)
-
-            # entry point
-            if event.common_event.status != TRIGGER:
-                continue
-
-            # search pointcloud
-            pointcloud_data = None
-            while not self.pointcloud_queue.empty():
-                pointcloud_data = self.pointcloud_queue.get_nowait()
-                if pointcloud_data.idx >= event.common_event.frame_id:
-                    break
-
-            if pointcloud_data is not None:
-                print(f'match pointcloud {pointcloud_data.idx}, \
-                      point core struct size: {len(pointcloud_data.point_core) / pointcloud_data.point_size},\
-                        point supplement struct size: {len(pointcloud_data.point_supplement) / pointcloud_data.point_size}')
-
-            # Create EventData object
-            event_data = EventData(
-                timestamp_ms=event.common_event.timestamp_ms,
-                timestamp_ms_local=int(time.time() * 1e3),
-                region_name=event.common_event.region_name,
-                region_id=event.common_event.region_id,
-                box=None,
-                pointcloud=pointcloud_data
-            )
-
-            if len(event.common_event.boxes) > 0:
-                event_data.box = BoxData(
-                    position_x=event.common_event.boxes[0].x,
-                    position_y=event.common_event.boxes[0].y,
-                    position_z=event.common_event.boxes[0].z,
-                    length=event.common_event.boxes[0].length,
-                    width=event.common_event.boxes[0].width,
-                    height=event.common_event.boxes[0].height,
-                    object_type=event.common_event.boxes[0].object_type,
-                    track_id=event.common_event.boxes[0].track_id,
-                    lane_id=event.common_event.boxes[0].lane_id
-                )
-            else:
-                logger.error(
-                    f"Event {event.common_event.event_id} has no boxes")
-
-            # Add to queue, removing oldest item if queue is full
-            try:
-                self.event_queue.put_nowait(event_data)
-            except queue.Full:
-                try:
-                    # Remove oldest item
-                    self.event_queue.get_nowait()
-                    # Add new item
-                    self.event_queue.put_nowait(event_data)
-                except queue.Empty:
-                    # Queue was empty despite being full, just add the item
-                    self.event_queue.put_nowait(event_data)
-
-    def _pointcloud_callback(self, msg: PointCloud2):
-        """Callback function for processing received pointclouds and queuing them"""
-        # Add to queue, removing oldest item if queue is full
-        try:
-            self.pointcloud_queue.put_nowait(msg)
-        except queue.Full:
-            try:
-                # Remove oldest item
-                self.pointcloud_queue.get_nowait()
-                # Add new item
-                self.pointcloud_queue.put_nowait(msg)
-            except queue.Empty:
-                # Queue was empty despite being full, just add the item
-                self.pointcloud_queue.put_nowait(msg)
-
-    def get_events(self) -> Optional[EventData]:
-        """Get the oldest event data from the queue"""
-        if not self.subscribed:
-            return None
-
-        # Return queued data if available
-        try:
-            return self.event_queue.get_nowait()
-        except queue.Empty:
-            return None
-
-    def release(self):
-        self.subscribed = False
-        cyber.shutdown()
-
-    def _cvt_pointcloud_to_image(self, pointcloud: PointCloud2) -> np.ndarray:
-        """Convert PointCloud2 message to numpy array"""
 
 
 class DataAdapter:
@@ -299,18 +40,18 @@ class DataAdapter:
         self.record_source: Optional[RecordSource] = None
         self.is_running = False
         self.image_callback: Optional[Callable[[ImageData], None]] = None
-        self.event_callback: Optional[Callable[[EventData], None]] = None
+        self.event_callback: Optional[Callable[[FrameData], None]] = None
         self.mode = None
 
     def set_image_callback(self, callback: Callable[[ImageData], None]):
         """Set callback function for receiving image data"""
         self.image_callback = callback
 
-    def set_event_callback(self, callback: Callable[[EventData], None]):
+    def set_event_callback(self, callback: Callable[[FrameData], None]):
         """Set callback function for receiving event data"""
         self.event_callback = callback
 
-    def set_online_mode(self, rtsp_url: str = None, event_channel: str = None, pointcloud_channel: str = None, event_type: int = EventRegionAttribute.FLOW_EVENT):
+    def set_online_mode(self, rtsp_url: str = None, event_channel: str = None, pointcloud_channel: str = None, event_type: int = EventRegionAttribute.FLOW_EVENT, boxes_channel_name: str = None):
         """Set adapter to online mode (RTSP + event channel)"""
         self.mode = "online"
         # self._clear_sources()
@@ -327,15 +68,16 @@ class DataAdapter:
                     event_channel, pointcloud_channel, event_type)
             else:
                 self.event_source.set_channel_name(
-                    event_channel, pointcloud_channel)
+                    event_channel_name=event_channel, pointcloud_channel_name=pointcloud_channel,
+                    boxes_channel_name=boxes_channel_name)
 
-    def set_offline_mode(self, record_path: str, camera_channel: str = None, event_channel: str = None, event_type: int = EventRegionAttribute.FLOW_EVENT, fps: int = None):
+    def set_offline_mode(self, record_path: str, camera_channel: str = None, event_channel: str = None, event_type: int = EventRegionAttribute.FLOW_EVENT, fps: int = None, box_channel: str = None, points_channel: str = None):
         """Set adapter to offline mode (record file)"""
         self.mode = "offline"
         # self._clear_sources()
         self.stop()
         self.record_source = RecordSource(
-            record_path, camera_channel=camera_channel, event_channel=event_channel, event_type=event_type, fps=fps)
+            record_path, camera_channel=camera_channel, event_channel=event_channel, event_type=event_type, fps=fps, box_channel=box_channel, points_channel=points_channel)
 
     def run(self, sync: bool = False):
         """
@@ -357,14 +99,6 @@ class DataAdapter:
 
         # Set running flag
         self.is_running = True
-
-        # Register signal handlers for graceful shutdown
-        # def signal_handler(sig, frame):
-        #     logger.info(f"Received signal {sig}. Stopping DataAdapter...")
-        #     self.stop()
-
-        # signal.signal(signal.SIGINT, signal_handler)
-        # signal.signal(signal.SIGTERM, signal_handler)
 
         # Create and start the processing thread
         if sync:
@@ -404,13 +138,14 @@ class DataAdapter:
         try:
             # Continuously process data while running flag is true
             while self.is_running:
-                image_data, event_data = self._get_online_data()
+                image_data, frame_data = self._get_online_data()
 
                 # Call image callback if provided and data is available
                 if self.image_callback and image_data:
                     self.image_callback(image_data)
 
                 # Call event callback if provided and data is available
+                event_data = frame_data.event_data
                 if self.event_callback and event_data:
                     self.event_callback(event_data)
 
@@ -446,7 +181,7 @@ class DataAdapter:
         finally:
             self._release_sources()
 
-    def _get_online_data(self) -> Tuple[Optional[ImageData], Optional[EventData]]:
+    def _get_online_data(self) -> Tuple[Optional[ImageData], Optional[FrameData]]:
         """Get data from online sources"""
         image_data = None
         event_data = None
@@ -455,7 +190,7 @@ class DataAdapter:
             image_data = self.camera_source.get_image()
 
         if self.event_source:
-            event_data = self.event_source.get_events()
+            event_data = self.event_source.get_frame()
 
         return image_data, event_data
 
