@@ -20,7 +20,7 @@ class SafeQueue:
                 self._q.put(item, block=False)
                 return
             except queue.Full:
-                logger.info(f"{self.name} 队列已满，移除最旧的值")
+                # logger.info(f"{self.name} 队列已满，移除最旧的值")
                 try:
                     # 丢弃最旧的一个
                     self._q.get_nowait()
@@ -33,5 +33,19 @@ class SafeQueue:
         try:
             return self._q.get()
         except queue.Empty:
-            logger.info(f"{self.name} 队列为空")
+            # logger.info(f"{self.name} 队列为空")
             return None
+        except BaseException as e:
+            logger.error(f"{self.name} 队列获取异常: {e}")
+            return None
+
+    def clear(self):
+        """Remove all pending items without replacing the queue object"""
+        while True:
+            try:
+                self._q.get_nowait()
+            except queue.Empty:
+                break
+            except BaseException as e:
+                logger.error(f"{self.name} 队列清理异常: {e}")
+                break

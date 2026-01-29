@@ -30,11 +30,11 @@ class RtspCameraSource(CameraSource):
         self.cap = cv2.VideoCapture(rtsp_url)
         if not self.cap.isOpened():
             raise RuntimeError(f"Failed to open RTSP stream: {rtsp_url}")
+        self.is_running = True
 
         # Create a queue for caching image data
         # Limit queue size to 10 frames
         self.image_queue = queue.Queue(maxsize=10)
-        self.is_running = True
 
         # Start a thread for capturing images
         self.capture_thread = threading.Thread(target=self._capture_loop)
@@ -74,12 +74,12 @@ class RtspCameraSource(CameraSource):
 
     def get_image(self) -> Optional[ImageData]:
         """Get the latest image data from the queue"""
-        if self.image_queue.empty():
-            return None
-        # Get the latest image by clearing the queue except for the last frame
         latest_image = None
-        while not self.image_queue.empty():
-            latest_image = self.image_queue.get_nowait()
+        while True:
+            try:
+                latest_image = self.image_queue.get_nowait()
+            except queue.Empty:
+                break
         return latest_image
 
     def release(self):

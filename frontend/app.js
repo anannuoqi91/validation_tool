@@ -72,7 +72,7 @@ function initializeEventListeners() {
     // 数据源设置 
     document.getElementById('onlineTab').addEventListener('click', () => switchTab('online')); 
     document.getElementById('recordTab').addEventListener('click', () => switchTab('record')); 
-    document.querySelector('#onlineTab .primary-btn')?.addEventListener('click', connect); 
+    // document.querySelector('#onlineTab .primary-btn')?.addEventListener('click', connect); 
     document.querySelector('#recordTab .primary-btn')?.addEventListener('click', loadRecord); 
     
     // 属性设置 
@@ -515,10 +515,10 @@ document.getElementById('triggerWidth').value = selectedItem.width;
 // 更新UI
 function updateUI() {
     // 更新车道列表
- updateLanesList();
+    updateLanesList();
     
     // 更新触发线列表
-updateTriggersList();
+    updateTriggersList();
     
     // 更新属性面板
     updatePropertiesPanel();
@@ -527,14 +527,14 @@ updateTriggersList();
 // 显示通知消息
 function showNotification(message, type = 'info') {
     // 移除之前的通知
-const existingNotification = document.querySelector('.notification'); 
-if (existingNotification) { 
-    existingNotification.remove(); 
-}
+    const existingNotification = document.querySelector('.notification'); 
+    if (existingNotification) { 
+        existingNotification.remove(); 
+    }
     
- const notification = document.createElement('div'); 
+    const notification = document.createElement('div'); 
     notification.className = `notification notification-${type}`;
- notification.textContent = message;
+    notification.textContent = message;
     
     // 添加样式
     notification.style.cssText = `
@@ -574,12 +574,12 @@ if (existingNotification) {
 // 开始定期更新统计数据
 function startStatsUpdate() {
     // 清除之前的定时器
-if (window.statsUpdateInterval) { 
-    clearInterval(window.statsUpdateInterval); 
-}
-    
-    // 每2秒更新一次统计数据
-window.statsUpdateInterval = setInterval(updateStats, 2000); 
+    if (window.statsUpdateInterval) { 
+        clearInterval(window.statsUpdateInterval); 
+    }
+        
+    // 每1秒更新一次统计数据
+    statsUpdateInterval = setInterval(updateStats, 1000);
 }
 
 
@@ -589,8 +589,8 @@ async function connect() {
     const cyberEventChannel = document.getElementById('cyberEventChannel').value; 
     const cyberPointcloudChannel = document.getElementById('cyberPointcloudChannel').value; 
     
-    if (!rtspUrl) {
-        showNotification('请输入RTSP URL', 'error');
+    if (!rtspUrl || !cyberEventChannel) {
+        alert('请输入RTSP URL和Cyber Event Channel');
         return;
     }
 
@@ -782,64 +782,64 @@ function startVideoStream() {
 // 更新连接状态显示
 function updateConnectionStatus(connected, detailText = '') {
   // 顶部状态（你 HTML 里已有）
-const top = document.getElementById('connectionStatus');
- if (top) top.textContent = connected ? '已连接' : '未连接';
+    const top = document.getElementById('connectionStatus');
+    if (top) top.textContent = connected ? '已连接' : '未连接';
 
   // 在线 tab 按钮下状态
-const row = ensureOnlineStatusRow(); 
-if (!row) return; 
+    const row = ensureOnlineStatusRow(); 
+    if (!row) return; 
 
-const dot = document.getElementById('onlineConnectionStatusDot'); 
-const text = document.getElementById('onlineConnectionStatusText'); 
+    const dot = document.getElementById('onlineConnectionStatusDot'); 
+    const text = document.getElementById('onlineConnectionStatusText'); 
 
-const baseText = connected ? '已连接' : '未连接'; 
-  const fullText = detailText ? `${baseText}（${detailText}）` : baseText;
+    const baseText = connected ? '已连接' : '未连接'; 
+    const fullText = detailText ? `${baseText}（${detailText}）` : baseText;
 
-  if (text) text.textContent = fullText;
+    if (text) text.textContent = fullText;
 
-  // 不指定颜色也行；如果你不介意小小配色，这里更直观
-  if (dot) dot.style.color = connected ? '#1a7f37' : '#999';
+    // 不指定颜色也行；如果你不介意小小配色，这里更直观
+    if (dot) dot.style.color = connected ? '#1a7f37' : '#999';
 }
 
 function ensureOnlineStatusRow() {
-  // 连接按钮（在线 tab 里的 primary-btn）
-const btn = document.querySelector('#onlineTab .primary-btn'); 
-  if (!btn) {
-    console.warn('[ensureOnlineStatusRow] connect button not found');
-    return null;
-  }
+    // 连接按钮（在线 tab 里的 primary-btn）
+    const btn = document.querySelector('#onlineTab .primary-btn'); 
+    if (!btn) {
+        console.warn('[ensureOnlineStatusRow] connect button not found');
+        return null;
+    }
 
-  // 已创建过就直接返回
-  let row = document.getElementById('onlineConnectionStatusRow');
-  if (row) return row;
+    // 已创建过就直接返回
+    let row = document.getElementById('onlineConnectionStatusRow');
+    if (row) return row;
 
-  // 创建一行：● + 文本
-row = document.createElement('div'); 
-  row.id = 'onlineConnectionStatusRow';
-  row.style.marginTop = '8px';
-  row.style.display = 'flex';
-  row.style.alignItems = 'center';
-  row.style.gap = '8px';
-  row.style.fontSize = '13px';
-  row.style.color = '#666';
+    // 创建一行：● + 文本
+    row = document.createElement('div'); 
+    row.id = 'onlineConnectionStatusRow';
+    row.style.marginTop = '8px';
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.gap = '8px';
+    row.style.fontSize = '13px';
+    row.style.color = '#666';
 
-  const dot = document.createElement('span');
-  dot.id = 'onlineConnectionStatusDot';
-  dot.textContent = '●';
-  dot.style.fontSize = '12px';
+    const dot = document.createElement('span');
+    dot.id = 'onlineConnectionStatusDot';
+    dot.textContent = '●';
+    dot.style.fontSize = '12px';
 
-  const text = document.createElement('span');
-  text.id = 'onlineConnectionStatusText';
-  text.textContent = '未连接';
+    const text = document.createElement('span');
+    text.id = 'onlineConnectionStatusText';
+    text.textContent = '未连接';
 
-  row.appendChild(dot);
-  row.appendChild(text);
+    row.appendChild(dot);
+    row.appendChild(text);
 
-  // 插到按钮下面
-  const parent = btn.parentNode;
-  parent.insertBefore(row, btn.nextSibling);
+    // 插到按钮下面
+    const parent = btn.parentNode;
+    parent.insertBefore(row, btn.nextSibling);
 
-  return row;
+    return row;
 }
 
 
@@ -866,7 +866,7 @@ function getTriggersConfig() {
 // 保存配置
 async function saveConfig() {
     try {
-const config = {
+        const config = {
             lanes: getLanesConfig(),
                     triggers: getTriggersConfig(),
                     videoSize: {
@@ -902,9 +902,9 @@ function applyConfig(config) {
     
     try {
         // 应用车道配置
-if (config.lanes && Array.isArray(config.lanes)) {
+        if (config.lanes && Array.isArray(config.lanes)) {
             // 清空现有车道
-lanes = [];
+            lanes = [];
             
             // 添加新车道
             config.lanes.forEach((lane, idx) => {
@@ -921,10 +921,12 @@ lanes = [];
         }
         
         // 应用触发线配置
-if (config.triggers && Array.isArray(config.triggers)) {
+        if (config.triggers && Array.isArray(config.triggers)) {
             // 清空现有触发线
-triggers = [];
-            
+            triggers = [];
+
+            // 清空统计数据
+
             // 添加新触发线
             config.triggers.forEach(trigger => {
                 const newTrigger = {
@@ -1094,6 +1096,7 @@ async function loadConfig() {
         
         if (data.success) {
             applyConfig(data.config);
+            startStatsUpdate();
             alert('配置加载成功！');
         } else {
             throw new Error(data.message || '加载失败');
@@ -1170,6 +1173,29 @@ function resetAnnotationsUI() {
 async function clearAll() {
     if (!confirm('确定要清空所有触发线和车道吗？')) return;
     resetAnnotationsUI();
+    updateStatsDisplay({});
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/clear_stats`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || '后端返回失败');
+        }
+        showNotification('本地标注与统计已清空，后端触发检测已关闭', 'success');
+    } catch (error) {
+        console.error('clear_stats 调用失败:', error);
+        showNotification('已清空本地标注，但通知后端失败：' + error.message, 'warning');
+    }
 }
 
 function toggleFullscreen() {
@@ -1306,6 +1332,9 @@ function startPointCloudImageStream() {
         console.warn('[pointcloud] #pointcloudImage not found');
         return;
     }
+    pointcloudImage.src = '';
+    pointcloudImage.onload = null;
+    pointcloudImage.onerror = null;
 
     // 显示“等待点云数据...”
     if (pointcloudLoading) {
@@ -1331,6 +1360,7 @@ function startPointCloudImageStream() {
 
     // ★ 关键：直接让 <img> 播 MJPEG 流，浏览器自己处理 boundary
     pointcloudImage.src = url;
+    window.pointcloudStream = url;
 }
 
 // 修改resize监听器

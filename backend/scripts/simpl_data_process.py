@@ -126,7 +126,8 @@ def handle_base_event(base_event_msg, region_type):
             width=event.common_event.boxes[0].width,
             height=event.common_event.boxes[0].height,
             object_type=event.common_event.boxes[0].object_type,
-            track_id=event.common_event.boxes[0].track_id
+            track_id=event.common_event.boxes[0].track_id,
+            lane_id=event.common_event.boxes[0].lane_id
         )
 
     return event_data

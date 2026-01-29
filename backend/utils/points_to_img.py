@@ -3,8 +3,7 @@ import cv2
 
 
 def pointcloud_to_image(points: np.ndarray,
-                        width: int = 640, height: int = 640,
-                        z_range: float = 200.0, y_range: float = 200.0) -> np.ndarray:
+                        width: int = 640, height: int = 640, z_range_m=[-150, 150], y_range_m=[-150, 150]) -> np.ndarray:
     """
         将点云转换为鸟瞰图(BEV)图像
 
@@ -12,8 +11,7 @@ def pointcloud_to_image(points: np.ndarray,
             points: numpy结构化数组，包含x, y, z, intensity等字段
             width: 图像宽度
             height: 图像高度
-            z_range: z轴坐标范围(米)，例如100表示[-50, 50]
-            y_range: y轴坐标范围(米)，例如100表示[-50, 50]
+            自适应点云范围，根据点云的最大最小值动态调整
 
         Returns:
             RGB图像数组 (height, width, 3)
@@ -25,22 +23,22 @@ def pointcloud_to_image(points: np.ndarray,
     y = points['y']
     z = points['z']
     x = points['x']  # 用于颜色区分
+    # 自适应范围
+    y_abs_max = float(np.max(np.abs(np.array(y_range_m)))
+                      ) if len(y_range_m) > 0 else 1.0
+    z_abs_max = float(np.max(np.abs(np.array(z_range_m)))
+                      ) if len(z_range_m) > 0 else 1.0
+    cx = width / 2.0
+    cy = height / 2.0
+    scale_y = (cx - 1) / y_abs_max * 0.95
+    scale_z = (cy - 1) / z_abs_max * 0.95
+    img_x = (cx - y * scale_y).astype(np.int32)
+    img_y = (cy - z * scale_z).astype(np.int32)
 
-    # 坐标映射到图像坐标系
-    # 点云坐标系: z向前，y向左，x表示高度（用于颜色）
-    # 图像坐标系: (0,0)在左上角，y向下
-    z_scale = height / z_range  # z轴对应图像纵向
-    y_scale = width / y_range   # y轴对应图像横向
-
-    # 过滤有效点（去除异常值）
-    valid_mask = (np.abs(y) < y_range / 2) & (np.abs(z) < z_range / 2)
-    y = y[valid_mask]
-    z = z[valid_mask]
-    x = x[valid_mask]  # x用于颜色区分
-
-    # 转换坐标: 点云(y,z) -> 图像(col,row)
-    img_x = ((y_range / 2 - y) * y_scale).astype(np.int32)
-    img_y = ((z_range / 2 + z) * z_scale).astype(np.int32)
+    valid = (
+        (img_x >= 0) & (img_x < width) &
+        (img_y >= 0) & (img_y < height)
+    )
 
     # 创建黑色背景图像
     image = np.zeros((height, width, 3), dtype=np.uint8)
@@ -50,7 +48,7 @@ def pointcloud_to_image(points: np.ndarray,
     colors[x == 0] = [255, 255, 255]  # 白色
     colors[x == 1] = [0, 100, 255]     # 蓝色
     # 将点绘制到图像上（使用过滤后的x坐标）
-    image[img_y, img_x] = colors  # 绘制点云到图像上
+    image[img_y[valid], img_x[valid]] = colors[valid]
     return image
 
 

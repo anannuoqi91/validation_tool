@@ -17,7 +17,7 @@ from backend.utils.log_util import logger
 from backend.scripts.record_source import RecordSource
 from backend.scripts.camera_source import *
 from backend.scripts.simpl_source import EventSource, ChannelEventSource
-from backend.modules.simpl_modules import RECORD_MSG_TYPE
+from backend.modules.simpl_modules import *
 try:
     from cyber_py3 import cyber
     from proto.region_pb2 import EventRegionAttribute
@@ -41,6 +41,7 @@ class DataAdapter:
         self.is_running = False
         self.image_callback: Optional[Callable[[ImageData], None]] = None
         self.event_callback: Optional[Callable[[FrameData], None]] = None
+        self.points_callback: Optional[Callable[[PointsData], None]] = None
         self.mode = None
 
     def set_image_callback(self, callback: Callable[[ImageData], None]):
@@ -51,10 +52,13 @@ class DataAdapter:
         """Set callback function for receiving event data"""
         self.event_callback = callback
 
+    def set_points_callback(self, callback: Callable[[PointsData], None]):
+        """Set callback function for receiving points data"""
+        self.points_callback = callback
+
     def set_online_mode(self, rtsp_url: str = None, event_channel: str = None, pointcloud_channel: str = None, event_type: int = EventRegionAttribute.FLOW_EVENT, boxes_channel_name: str = None):
         """Set adapter to online mode (RTSP + event channel)"""
         self.mode = "online"
-        # self._clear_sources()
         self.stop()
         if rtsp_url is None and event_channel is None:
             logger.error(
@@ -62,19 +66,18 @@ class DataAdapter:
             return
         if rtsp_url is not None:
             self.camera_source = RtspCameraSource(rtsp_url)
-        if event_channel is not None:
-            if self.event_source is None:
-                self.event_source = ChannelEventSource(
-                    event_channel, pointcloud_channel, event_type)
-            else:
-                self.event_source.set_channel_name(
-                    event_channel_name=event_channel, pointcloud_channel_name=pointcloud_channel,
-                    boxes_channel_name=boxes_channel_name)
+
+        if self.event_source is None:
+            self.event_source = ChannelEventSource(
+                event_channel_name=event_channel, pointcloud_channel_name=pointcloud_channel, event_type=event_type)
+        else:
+            self.event_source.set_channel_name(
+                event_channel_name=event_channel, pointcloud_channel_name=pointcloud_channel,
+                boxes_channel_name=boxes_channel_name)
 
     def set_offline_mode(self, record_path: str, camera_channel: str = None, event_channel: str = None, event_type: int = EventRegionAttribute.FLOW_EVENT, fps: int = None, box_channel: str = None, points_channel: str = None):
         """Set adapter to offline mode (record file)"""
         self.mode = "offline"
-        # self._clear_sources()
         self.stop()
         self.record_source = RecordSource(
             record_path, camera_channel=camera_channel, event_channel=event_channel, event_type=event_type, fps=fps, box_channel=box_channel, points_channel=points_channel)
@@ -132,26 +135,27 @@ class DataAdapter:
         if not self.camera_source and not self.event_source:
             logger.error("No sources configured for online mode")
             return
-
         try:
             # Continuously process data while running flag is true
             while self.is_running:
-                image_data, frame_data = self._get_online_data()
-
-                if image_data is None:
+                try:
+                    image_data, frame_data = self._get_online_data()
+                except Exception as e:
+                    logger.error(
+                        f"Error in _get_online_data: {e}")
                     continue
-                if self.image_callback is None:
-
-                    continue
-
                 # Call image callback if provided and data is available
                 if self.image_callback and image_data:
                     self.image_callback(image_data)
-
                 # Call event callback if provided and data is available
-                event_data = frame_data.event_data
-                if self.event_callback and event_data:
-                    self.event_callback(event_data)
+                if frame_data is not None:
+                    event_data = frame_data.event_data
+                    if self.event_callback and event_data:
+                        for i_e in event_data:
+                            self.event_callback(i_e)
+                    point_data = frame_data.pointcloud
+                    if self.points_callback and point_data is not None:
+                        self.points_callback(point_data)
 
                 # Small delay to prevent busy looping
                 # time.sleep(0.033)  # ~30 FPS
@@ -176,6 +180,8 @@ class DataAdapter:
                 self.record_source.set_camera_call_back(self.image_callback)
             if self.event_callback:
                 self.record_source.set_event_call_back(self.event_callback)
+            if self.points_callback:
+                self.record_source.set_points_call_back(self.points_callback)
 
             # Process the record file
             self.record_source.run()
@@ -189,13 +195,10 @@ class DataAdapter:
         """Get data from online sources"""
         image_data = None
         event_data = None
-
         if self.camera_source:
             image_data = self.camera_source.get_image()
-
         if self.event_source:
             event_data = self.event_source.get_frame()
-
         return image_data, event_data
 
     def stop(self):
@@ -229,73 +232,17 @@ class DataAdapter:
                 else:
                     logger.info("Processing thread terminated successfully")
 
-        # Release all sources
-        # self._release_sources()
-
     def _clear_sources(self):
         """Clear all existing sources"""
         self.stop()  # Ensure processing is stopped before clearing sources
         self._release_sources()
-        self.camera_source = None
-        self.event_source = None
-        self.record_source = None
 
     def _release_sources(self):
         """Release resources for all sources"""
         if self.camera_source:
             self.camera_source.release()
+            self.camera_source = None
         if self.event_source:
             self.event_source.release()
         if self.record_source:
             self.record_source.release()
-
-
-# Example usage
-if __name__ == "__main__":
-    # Create data adapter
-    adapter = DataAdapter()
-
-    # Define callbacks for all examples
-    def image_callback(image_data):
-        print(f"Image processed at {image_data.timestamp_ms} ms")
-        # save image to disk
-        # cv2.imwrite(f"image_{image_data.timestamp_ms}.jpg", image_data.image)
-
-    def event_callback(event_data):
-        print(
-            f"Event in region {event_data.region_name} at {event_data.timestamp_ms} ms")
-
-    # Example 1: Online mode using run method
-    # print("Example 1: Online mode using run method (press Ctrl+C to stop)")
-    try:
-        # Set callbacks
-        adapter.set_image_callback(image_callback)
-        adapter.set_event_callback(event_callback)
-
-        # Configure online mode with RTSP and event channel
-        adapter.set_online_mode(
-            event_channel="omnisense/event/172.30.0.3_1/events")
-
-        # Run in online mode (this will block until interrupted)
-        # Note: Uncomment the next line to actually run
-        adapter.run(sync=True)
-        print("Online mode run method configured (commented out for example)")
-    except Exception as e:
-        print(f"Error in example 1: {e}")
-
-    # # Example 2: Offline mode using run method
-    # print("\nExample 2: Offline mode using run method")
-    # try:
-    #     # Set callbacks
-    #     adapter.set_image_callback(image_callback)
-    #     adapter.set_event_callback(event_callback)
-
-    #     # Configure offline mode with record file
-    #     adapter.set_offline_mode("./1765877996291.record.00000", event_channel="replay_omnisense/event/01/events")
-
-    #     # Run in offline mode (this will process the entire file)
-    #     # Note: Uncomment the next line to actually run
-    #     adapter.run(sync=True)
-    #     print("Offline mode run method configured (commented out for example)")
-    # except Exception as e:
-    #     print(f"Error in example 2: {e}")

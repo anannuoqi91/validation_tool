@@ -3,15 +3,14 @@ import time
 import numpy as np
 from backend.utils.log_util import logger
 from backend.scripts.simpl_data_process import (
-    handle_base_event, handle_camera)
-from backend.modules.simpl_modules import EventData, RECORD_MSG_TYPE
+    handle_base_event, handle_camera, handle_compressed_points)
 
 try:
     from cyber_record.record import Record
     from cyber_py3 import cyber
     from proto.region_pb2 import EventRegionAttribute
     from backend.modules.camera_modules import ImageData
-    from backend.modules.simpl_modules import EventData, RECORD_MSG_TYPE
+    from backend.modules.simpl_modules import *
 except ImportError as e:
     logger.error(f"Failed to import cyber module: {e}")
     logger.info("Running in limited mode without cyber support")
@@ -64,6 +63,9 @@ class RecordSource:
     def set_event_call_back(self, event_call_back: Callable[[EventData], None]):
         self.event_call_back = event_call_back
 
+    def set_points_call_back(self, points_call_back: Callable[[PointsData], None]):
+        self.points_call_back = points_call_back
+
     def _msg_type_supported(self, msg_type: str) -> bool:
         if msg_type in RECORD_MSG_TYPE:
             return RECORD_MSG_TYPE[msg_type]
@@ -74,7 +76,6 @@ class RecordSource:
         last_frame_time = time.time()  # Track time of last processed frame
         print(self._channels)
         for channel_name, message, timestamp in self.record_reader.read_messages(self._channels):
-            print(f"channel_name: {channel_name}, timestamp: {timestamp}")
             # Check if we should stop processing
             if not self.is_running:
                 break
@@ -87,7 +88,6 @@ class RecordSource:
                 continue
             if support_bz == "camera" and \
                     (self.camera_channel == channel_name or self.camera_channel is None):
-                print(f"****************timestamp: {timestamp}")
                 image_data = handle_camera(message)
                 # Call callback if provided
                 if self.camera_call_back:
@@ -116,7 +116,15 @@ class RecordSource:
                     else:
                         logger.error(f"Event callback not set!")
             elif support_bz == "points":
-                pass
+                if "trig_recorder" in msg_type:
+                    new_msg = handle_compressed_points(message)
+                else:
+                    new_msg = message
+                points_data = code_pd2_pd(new_msg)
+                if self.points_call_back:
+                    self.points_call_back(points_data)
+                else:
+                    logger.error(f"Points callback not set!")
 
     def run(self):
         """Start parsing messages"""

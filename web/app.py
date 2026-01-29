@@ -19,6 +19,7 @@ from backend.scripts.record_source import RecordSource
 from backend.scripts.simpl_data_process import handle_pointscloud2_to_numpy
 from backend.utils.points_to_img import (
     pointcloud_to_image, encode_image_to_jpeg)
+from backend.utils.safe_queue import SafeQueue
 try:
     from save_results import SaveResults
     from matcher import Matcher
@@ -97,7 +98,10 @@ image_queue = queue.Queue(maxsize=10)  # 设置最大队列大小，防止内存
 # 使用条件量通知新图像到达
 image_condition = threading.Condition()
 
-config_file = os.path.join(os.path.dirname(__file__), 'config.json')
+points_queue = SafeQueue(maxsize=10, name="final_points")
+
+# config_file = os.path.join(os.path.dirname(__file__), 'config.json')
+config_file = None
 
 # 视频帧生成器
 
@@ -106,7 +110,6 @@ def generate_frames_from_adapter():
     """从DataAdapter生成视频帧"""
     while True:
         current_image_data = None
-
         # 等待新图像到达
         with image_condition:
             if image_queue.empty():
@@ -121,39 +124,46 @@ def generate_frames_from_adapter():
 
         if current_image_data is not None:
             # 将图像数据转换为JPEG格式
-            ret, buffer = cv2.imencode('.jpg', current_image_data.image)
-            if ret:
-                frame = buffer.tobytes()
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            try:
+                ret, buffer = cv2.imencode('.jpg', current_image_data.image)
+                if ret:
+                    frame = buffer.tobytes()
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            except Exception as e:
+                logger.error(f"Error encoding image: {e}")
+                continue
 
 
 def generate_points_from_adapter():
-    global current_pointcloud_adapter
+    global current_data_adapter, points_queue
     """从DataAdapter生成点云，转换为图片流"""
     while True:
-        if current_pointcloud_adapter is None:
+        if current_data_adapter is None:
             time.sleep(0.1)
             continue
 
         # 等待新点云到达
-        if current_pointcloud_adapter.pointcloud_condition():
-            # 获取合并后的点云numpy数组
-            image = current_pointcloud_adapter.get_pointclouds_png()
+        points_data = points_queue.get()
+        if points_data is None:
+            continue
+        # 获取合并后的点云numpy数组
+        points_np = handle_pointscloud2_to_numpy(points_data.pointcloud)
+        points_np['x'][:] = 1.0
+        image = pointcloud_to_image(points_np)
 
-            if image is not None:
-                # 编码为JPEG
-                frame_bytes = current_pointcloud_adapter.encode_image_to_jpeg(
-                    image, quality=80)
+        if image is not None:
+            # 编码为JPEG
+            frame_bytes = encode_image_to_jpeg(image, quality=80)
 
-                if frame_bytes is not None:
-                    # 发送图片帧
-                    yield (
-                        b'--frame\r\n'
-                        b'Content-Type: image/jpeg\r\n\r\n' +
-                        frame_bytes +
-                        b'\r\n'
-                    )
+            if frame_bytes is not None:
+                # 发送图片帧
+                yield (
+                    b'--frame\r\n'
+                    b'Content-Type: image/jpeg\r\n\r\n' +
+                    frame_bytes +
+                    b'\r\n'
+                )
         else:
             time.sleep(0.01)  # 无数据时短暂休眠
 
@@ -163,12 +173,10 @@ def generate_points_from_adapter():
 
 def image_callback(image_data: ImageData):
     """处理接收到的图像数据"""
+    image_display = image_data.image.copy()
     # 处理跟踪结果
     if current_tracker is not None:
         track_results = current_tracker.detect_and_track(image_data.image)
-        image_display = image_data.image.copy()
-        # current_tracker.draw_tracking_results(image_display, track_results)
-
         if current_trigger is not None:
             trigger_results = current_trigger.process_boxes(track_results)
             for result in trigger_results:
@@ -206,6 +214,10 @@ def image_callback(image_data: ImageData):
                         if len(matched_results) > 0:
                             save_results.save_results(matched_results)
 
+                current_tracker.draw_tracking_result(
+                    image_display, result['box'], result['track_id'], result['class_id'])
+        else:
+            for result in track_results:
                 current_tracker.draw_tracking_result(
                     image_display, result['box'], result['track_id'], result['class_id'])
 
@@ -249,6 +261,10 @@ def event_callback(event_data: EventData):
             save_results.save_results(matched_results)
 
 
+def points_callback(pointcloud_data: PointsData):
+    """处理接收到的点云数据"""
+    global points_queue
+    points_queue.put(pointcloud_data)
 # RTSP流相关路由
 
 
@@ -281,8 +297,9 @@ def connect():
         current_tracker = Tracker(onnx_model_path='models/yolo11s.pt')
 
         # 初始化Trigger
-        current_trigger = Trigger(
-            lane_trigger_path=config_file, lane_detection_point="bottom_center")
+        if config_file is not None:
+            current_trigger = Trigger(
+                lane_trigger_path=config_file, lane_detection_point="bottom_center")
 
         # 初始化Matcher
         current_matcher = Matcher()
@@ -301,16 +318,11 @@ def connect():
 
         current_data_adapter.set_image_callback(image_callback)
         current_data_adapter.set_event_callback(event_callback)
+        current_data_adapter.set_points_callback(points_callback)
         current_data_adapter.set_online_mode(
-            rtsp_url, cyber_event_channel, None)
+            rtsp_url=rtsp_url,
+            event_channel=cyber_event_channel, pointcloud_channel=cyber_pointcloud_channel)
         current_data_adapter.run()
-
-        if current_pointcloud_adapter:
-            current_pointcloud_adapter.stop()
-        else:
-            current_pointcloud_adapter = PointCloudAdapter()
-        current_pointcloud_adapter.set_online_mode(cyber_pointcloud_channel)
-        current_pointcloud_adapter.run()
 
         logger.info(f"Connected to RTSP stream: {rtsp_url}")
         return jsonify({"success": True, "stream_url": "/video_feed", "pointcloud_url": "/points"})
@@ -379,7 +391,8 @@ def play_record():
         current_tracker = Tracker(onnx_model_path='models/yolo11s.pt')
 
         # 初始化Trigger
-        current_trigger = Trigger(lane_trigger_path=config_file)
+        if config_file is not None:
+            current_trigger = Trigger(lane_trigger_path=config_file)
 
         # 初始化Matcher
         current_matcher = Matcher()
@@ -397,8 +410,16 @@ def play_record():
 
         current_data_adapter.set_image_callback(image_callback)
         current_data_adapter.set_event_callback(event_callback)
-        current_data_adapter.set_offline_mode(temp_file_path, fps=10,  camera_channel=request.form.get(
-            'camera_channel'), event_channel=request.form.get('event_channel'), box_channel=request.form.get('box_channel'), points_channel=request.form.get('points_channel'))
+        current_data_adapter.set_points_callback(points_callback)
+        current_data_adapter.set_offline_mode(temp_file_path, fps=10,
+                                              camera_channel=request.form.get(
+                                                  'camera_channel'),
+                                              event_channel=request.form.get(
+                                                  'event_channel'),
+                                              box_channel=request.form.get(
+                                                  'box_channel'),
+                                              points_channel=request.form.get(
+                                                  'points_channel'))
         current_data_adapter.run()
 
         logger.info(f"Processing record file: {temp_file_path}")
@@ -447,9 +468,18 @@ def save_config():
 @app.route('/api/config/load', methods=['GET'])
 def load_config():
     """加载配置"""
+    global current_trigger
     try:
+        config_file = os.path.join(os.path.dirname(__file__), 'config.json')
         if not os.path.exists(config_file):
             return jsonify({"success": True, "config": {"lanes": [], "triggers": []}})
+
+        current_trigger = Trigger(
+            lane_trigger_path=config_file, lane_detection_point="bottom_center")
+
+        with map_lock:
+            image_stats_map.clear()
+            event_stats_map.clear()
 
         with open(config_file, 'r') as f:
             config = json.load(f)
@@ -512,6 +542,17 @@ def get_stats():
         }
 
         return jsonify({"success": True, "stats": merged_stats})
+
+
+@app.route('/api/clear_stats', methods=['POST'])
+def clear_stats():
+    global current_trigger
+    """清空统计数据"""
+    with map_lock:
+        image_stats_map.clear()
+        event_stats_map.clear()
+    current_trigger = None
+    return jsonify({"success": True, "message": "统计数据已清空"})
 
 # 健康检查
 
